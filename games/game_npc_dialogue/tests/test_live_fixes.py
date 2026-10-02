@@ -12,6 +12,8 @@ from prompts import build_system_prompt
 from session import TownSession
 from speech import (
     ACT_CUE,
+    CHARGED_EN,
+    CHARGED_ZH,
     HONEST_EN,
     HONEST_ZH,
     SPEAK_CUE,
@@ -145,6 +147,17 @@ def test_language_is_chosen_from_the_player_line() -> None:
     assert "neutral, happy, annoyed, grateful, warm, suspicious" in chinese
     assert "integer from -3 to 3" in chinese
     assert "was never lost" in chinese
+    assert "positive affinity_delta" in chinese
+    assert "GenerateStructuredOutput directly" in chinese
+    assert "plain text" in chinese
+    action = build_system_prompt(
+        town_name=config.town_name,
+        npc=npc,
+        state_text="Player: Kestrel",
+        affinity=5,
+        emotion="warm",
+    )
+    assert 'Example: "What is my name?" -> no_action.' in action
     assert "adjust_gold" not in chinese
     assert "update_quest" not in chinese
     english = build_system_prompt(
@@ -368,6 +381,84 @@ def test_out_of_range_emotion_is_mapped_once(tmp_path: Path) -> None:
         len([call for call in calm_model.calls if call["phase"] == "speak"])
         == 1
     )
+
+
+def test_a_successful_charge_is_not_rewritten_as_a_gift() -> None:
+    """'Here you go' after a charge is the service, not a false gift."""
+    bed = "Here you go, Kestrel — a warm bed and quiet night."
+    assert (
+        guard_unproven_transfer(bed, ["brown loaf"], [], True, "English")
+        == bed
+    )
+    chinese = "给你，今晚住下吧。"
+    assert (
+        guard_unproven_transfer(
+            chinese,
+            ["brown loaf"],
+            [],
+            True,
+            "Simplified Chinese",
+        )
+        == chinese
+    )
+    claimed = guard_unproven_transfer(
+        "Here you go! Take the horseshoe.",
+        ["horseshoe"],
+        [],
+        True,
+        "English",
+    )
+    assert claimed == CHARGED_EN
+    assert "unchanged" not in claimed.lower()
+    taken = guard_unproven_transfer(
+        "拿去。",
+        ["brown loaf"],
+        [],
+        True,
+        "Simplified Chinese",
+    )
+    assert taken == CHARGED_ZH
+    assert "没有变化" not in taken
+    assert (
+        guard_unproven_transfer(
+            "给你！",
+            ["brown loaf"],
+            [],
+            False,
+            "Simplified Chinese",
+        )
+        == HONEST_ZH
+    )
+
+
+def test_a_failed_quest_call_cannot_raise_affinity(tmp_path: Path) -> None:
+    """already/cannot from a quest tool cannot increase affinity."""
+    session, _model = _session(tmp_path)
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(session.talk("mira", "Please give me a forging hammer."))
+    asyncio.run(session.talk("rowan", "I found the hammer. Here it is."))
+    assert session.game.gold == 20
+    before = session.game.affinity("rowan")
+    session.model = ScriptedNpcModel(forced_emotion="grateful", forced_delta=2)
+    again = asyncio.run(
+        session.talk("rowan", "I found the hammer. Here it is."),
+    )
+    assert again.affinity_delta <= 0
+    assert session.game.affinity("rowan") == before
+    memory = (session.memory_dir("rowan") / "MEMORY.md").read_text(
+        encoding="utf-8",
+    )
+    assert memory.count("Affinity +") == 1
+
+    refused, _model = _session(tmp_path / "missing")
+    asyncio.run(refused.talk("rowan", "I accept the lost hammer quest."))
+    refused.model = ScriptedNpcModel(forced_emotion="grateful", forced_delta=3)
+    blocked = asyncio.run(
+        refused.talk("rowan", "I found the hammer. Here it is."),
+    )
+    assert refused.game.gold == 12
+    assert blocked.affinity_delta <= 0
+    assert refused.game.affinity("rowan") <= 1
 
 
 def _history_text(session: TownSession, npc_id: str) -> str:

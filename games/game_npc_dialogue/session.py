@@ -118,6 +118,7 @@ class TownSession:
             self.game.stock(npc_id),
             _new_items(before_items, self.game.inventory),
             self.game.gold < before_gold,
+            _quest_failed(state, player_text),
         )
         _scrub_history(state)
         return result
@@ -246,6 +247,7 @@ def _apply_turn(
     stock: list[str],
     granted: list[str],
     charged: bool,
+    quest_failed: bool,
 ) -> TurnResult:
     """Read structured output and write emotion plus affinity."""
     payload = message.structured_output or {}
@@ -265,6 +267,8 @@ def _apply_turn(
     except (TypeError, ValueError):
         delta = 0
     delta = max(_DELTA_MIN, min(_DELTA_MAX, delta))
+    if quest_failed and delta > 0:
+        delta = 0
     emotion = normalize_emotion(str(payload.get("emotion", "")))
     reason = str(payload["affinity_reason"])
     reply = polish_reply(str(payload["reply"]), reason) or "(no reply)"
@@ -293,6 +297,39 @@ def _apply_turn(
         affinity=affinity,
         affinity_reason=reason,
     )
+
+
+def _quest_failed(state: AgentState, player_text: str) -> bool:
+    """True when a quest tool ran and did not accept or complete."""
+    start = _player_index(state.context, player_text)
+    if start is None:
+        return False
+    failed = False
+    for message in state.context[start + 1 :]:
+        for block in _named_tool_blocks(message, {"tool_result"}):
+            if block.name not in {"accept_quest", "complete_quest"}:
+                continue
+            if _quest_succeeded(block.name, _result_text(block)):
+                return False
+            failed = True
+    return failed
+
+
+def _quest_succeeded(name: str, text: str) -> bool:
+    lowered = text.lower()
+    if name == "accept_quest":
+        return "now accepted" in lowered
+    return "is completed" in lowered and "already" not in lowered
+
+
+def _result_text(block) -> str:
+    output = getattr(block, "output", "")
+    if isinstance(output, str):
+        return output
+    parts = []
+    for item in output:
+        parts.append(getattr(item, "text", str(item)))
+    return "\n".join(parts)
 
 
 def _new_items(before: list[str], after: list[str]) -> list[str]:

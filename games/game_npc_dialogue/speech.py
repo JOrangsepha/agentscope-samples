@@ -58,6 +58,11 @@ _GIFT = (
     "送给你",
 )
 _BARE_GIFT = ("here you go", "here. one", "take this", "给你", "拿去", "送给你")
+# A paid service often starts with these. They are not a gift claim
+# when charge_player already succeeded.
+_SERVICE_HANDOFF = ("here you go", "给你")
+CHARGED_EN = "You were charged, but I have not given you an item."
+CHARGED_ZH = "金币已经扣过了，但没有把物品交给你。"
 _CHARGE = (
     "that'll be",
     "that will be",
@@ -139,9 +144,7 @@ def guard_unproven_transfer(
     """Replace a gift or payment the tools did not actually make."""
     if not reply or not _failed_transfer(reply, stock, granted, charged):
         return reply
-    if language == "Simplified Chinese":
-        return HONEST_ZH
-    return HONEST_EN
+    return _honest_line(language, charged, granted)
 
 
 def _failed_transfer(
@@ -151,8 +154,17 @@ def _failed_transfer(
     charged: bool,
 ) -> bool:
     low = reply.lower()
-    if any(phrase in low for phrase in _CHARGE) and not charged:
-        return True
+    false_charge = any(phrase in low for phrase in _CHARGE) and not charged
+    return false_charge or _unproven_gift(low, stock, granted, charged)
+
+
+def _unproven_gift(
+    low: str,
+    stock: list[str],
+    granted: list[str],
+    charged: bool,
+) -> bool:
+    """True when the line claims an item the tools did not give."""
     if not any(phrase in low for phrase in _GIFT):
         return False
     granted_names = {item.lower() for item in granted}
@@ -163,9 +175,31 @@ def _failed_transfer(
     ]
     if missing:
         return True
+    bare_phrases = _BARE_GIFT
+    if charged:
+        bare_phrases = tuple(
+            phrase for phrase in _BARE_GIFT if phrase not in _SERVICE_HANDOFF
+        )
     named = any(item.lower() in low for item in stock)
-    bare = any(phrase in low for phrase in _BARE_GIFT)
+    bare = any(phrase in low for phrase in bare_phrases)
     return bare and not named and not granted
+
+
+def _honest_line(language: str, charged: bool, granted: list[str]) -> str:
+    """Describe the transfer that actually happened."""
+    chinese = language == "Simplified Chinese"
+    if charged and granted:
+        items = ", ".join(granted)
+        if chinese:
+            return f"金币已经扣过了。本轮交给你的只有{items}。"
+        return f"You were charged. This turn I only gave you {items}."
+    if charged:
+        if chinese:
+            return CHARGED_ZH
+        return CHARGED_EN
+    if chinese:
+        return HONEST_ZH
+    return HONEST_EN
 
 
 def _merge_short(parts: list[str]) -> list[str]:

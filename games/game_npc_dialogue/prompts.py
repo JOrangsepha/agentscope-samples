@@ -91,6 +91,9 @@ def build_system_prompt(
     return (
         head + "# Action\n"
         "Call one tool. This phase does not speak to the player.\n"
+        "Small talk, greetings, and questions about what you remember "
+        'must call no_action. Example: "What is my name?" -> '
+        "no_action.\n"
         "If gold, items, quests, and memory should stay unchanged, "
         "call no_action.\n"
         "Do not write a spoken line. A sentence cannot give an item "
@@ -112,6 +115,12 @@ def _speech_rules(player_text: str, language: str) -> str:
         "Emotion must be one of: neutral, happy, annoyed, grateful, "
         "warm, suspicious.\n"
         "Set affinity_delta to an integer from -3 to 3.\n"
+        "Only an event a tool result says happened this turn earns "
+        "a positive affinity_delta: an item given, coins taken, a "
+        "quest accepted, or a quest completed. A question, small "
+        "talk, or a result that says already or cannot does not.\n"
+        "Call GenerateStructuredOutput directly. Do not write the "
+        "emotion, affinity_delta, or affinity_reason as plain text.\n"
         "Do not say you gave an item or took gold unless a tool "
         "result in this turn says that happened.\n"
     )
