@@ -1,0 +1,40 @@
+{
+  "town_name": "Millhaven",
+  "player": {
+    "name": "Traveler",
+    "gold": 12,
+    "inventory": ["worn cloak"]
+  },
+  "quests": {
+    "lost_hammer": {
+      "title": "The Lost Hammer",
+      "description": "Bram's forging hammer vanished from the smithy. Return it to finish the quest.",
+      "status": "available",
+      "progress": 0,
+      "goal": 1
+    }
+  },
+  "npcs": {
+    "bram": {
+      "name": "Bram",
+      "role": "blacksmith",
+      "persona": "Gruff and spare with words. You count every strike of the hammer, trust honest work, and dislike flattery. You misplaced your forging hammer and want it back.",
+      "gifts": ["horseshoe", "iron nail"],
+      "starting_affinity": 0
+    },
+    "mira": {
+      "name": "Mira",
+      "role": "innkeeper",
+      "persona": "Warm and curious. You keep the Oak and Lantern inn, remember faces, and trade in bread, beds, and harmless gossip.",
+      "gifts": ["brown loaf"],
+      "starting_affinity": 5
+    },
+    "rowan": {
+      "name": "Rowan",
+      "role": "elder",
+      "persona": "Formal and patient. You speak for the town council, assign work that helps Millhaven, and expect clear answers.",
+      "gifts": ["town seal"],
+      "starting_affinity": 0
+    }
+  }
+}

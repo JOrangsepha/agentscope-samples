@@ -55,7 +55,8 @@ This is a repository that **brings together a variety of ready-to-run Python age
 │   └── qwen_langgraph_search_fullstack_runtime/    # Full-stack runtime-enabled research app
 │
 ├── games/
-│   └── game_werewolves/                    # Role-based social deduction game
+│   ├── game_werewolves/                    # Role-based social deduction game
+│   └── game_npc_dialogue/                  # Town NPC dialogue with memory
 │
 ├── conversational_agents/
 │   ├── chatbot/                            # Chatbot application
@@ -89,6 +90,7 @@ This is a repository that **brings together a variety of ready-to-run Python age
 | **Deep Research**       | deep_research/agent_deep_research                     | ✅               | ❌            | Multi-agent research pipeline                    |
 |                         | deep_research/qwen_langgraph_search_fullstack_runtime | ❌               | ✅            | Full-stack deep research app                     |
 | **Games**               | games/game_werewolves                                 | ✅               | ❌            | Multi-agent roleplay game                        |
+|                         | games/game_npc_dialogue                               | ✅               | ❌            | Town NPC dialogue with memory, tools, and affinity |
 | **Conversational Apps** | conversational_agents/chatbot_fullstack_runtime       | ✅               | ✅            | Chatbot application with frontend/backend        |
 |                         | conversational_agents/chatbot                         | ✅               | ❌            |                                                  |
 |                         | conversational_agents/multiagent_conversation         | ✅               | ❌            | Multi-agent dialogue scenario                    |
