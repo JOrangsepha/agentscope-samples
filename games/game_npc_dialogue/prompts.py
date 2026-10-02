@@ -78,6 +78,12 @@ def build_system_prompt(
         "# Game state\n"
         f"{state_text}\n"
         f"Stock you can give now: {stock_text}.\n\n"
+        "# Facts\n"
+        "Bram lost his forging hammer. It stays lost until that quest "
+        "status is completed.\n"
+        "Do not say the hammer was never lost.\n"
+        "Do not assign the player's trade to another resident.\n"
+        "Give only items listed under stock.\n\n"
     )
     if speaking:
         return head + _speech_rules(player_text, language)
@@ -103,6 +109,9 @@ def _speech_rules(player_text: str, language: str) -> str:
         f"Reply in {lang}.\n"
         "Speak in one or two sentences. "
         "Do not write asterisks or stage directions.\n"
+        "Emotion must be one of: neutral, happy, annoyed, grateful, "
+        "warm, suspicious.\n"
+        "Set affinity_delta to an integer from -3 to 3.\n"
         "Do not say you gave an item or took gold unless a tool "
         "result in this turn says that happened.\n"
     )

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+from difflib import get_close_matches
 
 SPEAK_CUE = "SPEAK_NOW"
+ACT_CUE = "ACT_NOW"
 HONEST_EN = "I have not given you anything, and your coins are unchanged."
 HONEST_ZH = "背包和金币都没有变化。"
 
@@ -16,6 +18,25 @@ _EMOTIONS = {
     "warm",
     "suspicious",
 }
+_EMOTION_ALIASES = {
+    "irritated": "annoyed",
+    "angry": "annoyed",
+    "mad": "annoyed",
+    "anger": "annoyed",
+    "calm": "neutral",
+    "content": "neutral",
+    "relaxed": "neutral",
+    "pleased": "happy",
+    "joyful": "happy",
+    "glad": "happy",
+    "thankful": "grateful",
+    "friendly": "warm",
+    "kind": "warm",
+    "wary": "suspicious",
+    "distrustful": "suspicious",
+}
+_REPLY_LIMIT = 240
+_SHORT_SENTENCE = 24
 _STAGE = re.compile(r"\*[^*]*\*")
 _END = re.compile(r"([.!?。！？][\"”’')]?)")
 _CJK = re.compile(r"[\u4e00-\u9fff]")
@@ -63,8 +84,24 @@ def learn_player_name(text: str) -> str | None:
     return _chinese_name(text)
 
 
+def normalize_emotion(value: str) -> str:
+    """Map a model emotion onto the six emotions the game stores."""
+    cleaned = value.strip().lower()
+    if cleaned in _EMOTIONS:
+        return cleaned
+    if cleaned in _EMOTION_ALIASES:
+        return _EMOTION_ALIASES[cleaned]
+    match = get_close_matches(cleaned, sorted(_EMOTIONS), n=1, cutoff=0.6)
+    if match:
+        return match[0]
+    return "neutral"
+
+
 def polish_reply(text: str, affinity_reason: str = "") -> str:
-    """Drop stage directions, leaked fields, and sentences after the second.
+    """Drop stage directions and leaked fields, then trim by length.
+
+    Very short sentences are merged forward. The result stays within
+    240 characters and always keeps the first sentence.
 
     Args:
         text: The model's spoken reply.
@@ -86,7 +123,10 @@ def polish_reply(text: str, affinity_reason: str = "") -> str:
     merged = " ".join(kept).strip()
     if not merged:
         return ""
-    return " ".join(_sentences(merged)[:2])
+    parts = _sentences(merged)
+    if not parts:
+        return ""
+    return _limit_length(_merge_short(parts))
 
 
 def guard_unproven_transfer(
@@ -126,6 +166,48 @@ def _failed_transfer(
     named = any(item.lower() in low for item in stock)
     bare = any(phrase in low for phrase in _BARE_GIFT)
     return bare and not named and not granted
+
+
+def _merge_short(parts: list[str]) -> list[str]:
+    merged: list[str] = []
+    current = parts[0]
+    for part in parts[1:]:
+        if len(current) < _SHORT_SENTENCE:
+            current = _join_two(current, part)
+            continue
+        merged.append(current)
+        current = part
+    merged.append(current)
+    return merged
+
+
+def _limit_length(parts: list[str]) -> str:
+    kept = [parts[0]]
+    total = len(parts[0])
+    for part in parts[1:]:
+        gap = 1 if _needs_space(kept[-1], part) else 0
+        if total + gap + len(part) > _REPLY_LIMIT:
+            break
+        kept.append(part)
+        total += gap + len(part)
+    text = kept[0]
+    for part in kept[1:]:
+        text = _join_two(text, part)
+    return text
+
+
+def _join_two(left: str, right: str) -> str:
+    if _needs_space(left, right):
+        return f"{left} {right}"
+    return f"{left}{right}"
+
+
+def _needs_space(prev: str, nxt: str) -> bool:
+    if not prev or not nxt:
+        return False
+    if prev[-1] in "。！？":
+        return False
+    return _CJK.match(nxt[0]) is None
 
 
 def _sentences(text: str) -> list[str]:

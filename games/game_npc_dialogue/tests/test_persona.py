@@ -26,6 +26,7 @@ def test_three_distinct_personas() -> None:
     assert config.npcs["mira"].role == "innkeeper"
     assert config.npcs["rowan"].role == "elder"
     assert "horseshoe" in config.npcs["bram"].gifts
+    assert config.npcs["rowan"].gifts == []
     assert config.quests["lost_hammer"].title == "The Lost Hammer"
 
 

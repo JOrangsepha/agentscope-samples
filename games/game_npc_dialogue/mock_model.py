@@ -16,7 +16,7 @@ from agentscope.formatter import DashScopeChatFormatter
 from agentscope.message import TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse
 
-from speech import SPEAK_CUE, learn_player_name
+from speech import ACT_CUE, SPEAK_CUE, learn_player_name
 
 _AFFINITY_RE = re.compile(r"Affinity:\s*(-?\d+)")
 _NPC_RE = re.compile(r"^You are ([^,]+),", re.MULTILINE)
@@ -49,7 +49,12 @@ class MockCredential(CredentialBase):
 class ScriptedNpcModel(ChatModelBase):
     """Offline stand-in for DashScope / OpenAI / Ollama."""
 
-    def __init__(self, act_text: str | None = None) -> None:
+    def __init__(
+        self,
+        act_text: str | None = None,
+        forced_emotion: str | None = None,
+        forced_delta: int | None = None,
+    ) -> None:
         super().__init__(
             credential=MockCredential(),
             model="scripted-npc",
@@ -61,6 +66,8 @@ class ScriptedNpcModel(ChatModelBase):
         self.calls: list[dict[str, str]] = []
         # When set, the action phase returns this text and no tool call.
         self.act_text = act_text
+        self.forced_emotion = forced_emotion
+        self.forced_delta = forced_delta
 
     async def _call_api(
         self,
@@ -90,12 +97,17 @@ class ScriptedNpcModel(ChatModelBase):
             },
         )
         if phase == "speak":
-            return _speak_response(
+            response = _speak_response(
                 len(self.calls),
                 self.act_text,
                 system,
                 player,
                 _tool_result_text(this_turn),
+            )
+            return _with_forced_score(
+                response,
+                self.forced_emotion,
+                self.forced_delta,
             )
         return _act_response(
             self.act_text,
@@ -175,6 +187,20 @@ def _structured(
     return ChatResponse(content=[block], is_last=True)
 
 
+def _with_forced_score(response, emotion, delta):
+    """Overwrite the scripted emotion or delta for one speak call."""
+    if emotion is None and delta is None:
+        return response
+    block = response.content[0]
+    payload = json.loads(block.input)
+    if emotion is not None:
+        payload["emotion"] = emotion
+    if delta is not None:
+        payload["affinity_delta"] = delta
+    block.input = json.dumps(payload)
+    return response
+
+
 def _text(text: str) -> ChatResponse:
     return ChatResponse(content=[TextBlock(text=text)], is_last=True)
 
@@ -202,7 +228,7 @@ def _player_text(messages: list) -> str:
         if getattr(message, "role", None) != "user":
             continue
         text = message.get_text_content() or ""
-        if text.startswith(SPEAK_CUE):
+        if _is_cue(text):
             continue
         return text
     return ""
@@ -215,7 +241,7 @@ def _since_player(messages: list) -> list:
         if getattr(message, "role", None) != "user":
             continue
         text = message.get_text_content() or ""
-        if text.startswith(SPEAK_CUE):
+        if _is_cue(text):
             continue
         start = index + 1
     return list(messages[start:])
@@ -246,6 +272,10 @@ def _tool_blocks(message) -> list:
     if getter is None:
         return []
     return list(getter("tool_result"))
+
+
+def _is_cue(text: str) -> bool:
+    return text.startswith((SPEAK_CUE, ACT_CUE))
 
 
 def _npc_name(system: str) -> str:

@@ -11,11 +11,13 @@ from npc_config import load_town_config
 from prompts import build_system_prompt
 from session import TownSession
 from speech import (
+    ACT_CUE,
     HONEST_EN,
     HONEST_ZH,
     SPEAK_CUE,
     guard_unproven_transfer,
     learn_player_name,
+    normalize_emotion,
     polish_reply,
     reply_language,
 )
@@ -106,6 +108,9 @@ def test_tools_are_limited_to_the_npc(tmp_path: Path) -> None:
     assert "charge_player" not in by_npc["Rowan"]
     assert "charge_player" in by_npc["Mira"]
     assert "accept_quest" not in by_npc["Mira"]
+    refused_seal = session.game.give_item("rowan", "town seal")
+    assert "cannot give" in refused_seal
+    assert "town seal" not in session.game.inventory
 
     charged = session.game.charge(3, "a bed")
     assert "paid 3 gold" in charged
@@ -137,6 +142,9 @@ def test_language_is_chosen_from_the_player_line() -> None:
     assert "changes affinity by 0" in chinese
     assert "one or two sentences" in chinese
     assert "stage directions" in chinese
+    assert "neutral, happy, annoyed, grateful, warm, suspicious" in chinese
+    assert "integer from -3 to 3" in chinese
+    assert "was never lost" in chinese
     assert "adjust_gold" not in chinese
     assert "update_quest" not in chinese
     english = build_system_prompt(
@@ -222,11 +230,11 @@ def test_spoken_line_is_a_later_call_without_game_tools(
 
 
 def test_polish_reply_drops_stage_directions_and_leaked_fields() -> None:
-    """Asterisks, bare emotion lines, and the reason do not reach the CLI."""
+    """Asterisks and leaked fields go. Short sentences stay if they fit."""
     spoken = polish_reply(
         "*wipes a mug* The stew is hot. Sit down. The third should go.",
     )
-    assert spoken == "The stew is hot. Sit down."
+    assert spoken == "The stew is hot. Sit down. The third should go."
     assert "*" not in spoken
     leaked = polish_reply(
         "Good evening.\nneutral\n0\nThe player was polite.",
@@ -234,9 +242,21 @@ def test_polish_reply_drops_stage_directions_and_leaked_fields() -> None:
     )
     assert leaked == "Good evening."
     chinese = polish_reply("没有。锤子还在丢着。你要是见着了，就送回来。")
-    assert chinese == "没有。 锤子还在丢着。"
+    assert chinese == "没有。锤子还在丢着。你要是见着了，就送回来。"
+    assert "。 " not in chinese
+    hammer = polish_reply(
+        "Ah—yes! Bram's hammer. It was behind the flour sacks.",
+    )
+    assert "Bram's hammer" in hammer
+    assert "flour sacks" in hammer
     quoted = polish_reply('She said "Go." He stayed. A third sentence.')
-    assert quoted == 'She said "Go." He stayed.'
+    assert quoted == 'She said "Go." He stayed. A third sentence.'
+    opening = "This opening sentence is long enough to stand alone."
+    trimmed = polish_reply(f"{opening} " + ("Tail. " * 50))
+    assert trimmed.startswith(opening)
+    assert "Tail." in trimmed
+    assert len(trimmed) <= 240
+    assert trimmed.count("Tail.") < 50
 
 
 def test_text_only_action_cannot_give_or_charge(tmp_path: Path) -> None:
@@ -250,8 +270,11 @@ def test_text_only_action_cannot_give_or_charge(tmp_path: Path) -> None:
     gift = asyncio.run(
         gift_session.talk("bram", "Please give me a horseshoe."),
     )
-    assert gift_model.calls[0]["tool_choice"] == "required"
+    assert gift_model.calls[0]["tool_choice"] != "required"
     assert gift_model.calls[0]["phase"] == "act"
+    gift_acts = [call for call in gift_model.calls if call["phase"] == "act"]
+    assert len(gift_acts) == 2
+    assert gift_acts[1]["user"] == "Please give me a horseshoe."
     assert "horseshoe" not in gift_session.game.inventory
     assert gift.reply == HONEST_EN
     assert "take the horseshoe" not in gift.reply.lower()
@@ -271,7 +294,11 @@ def test_text_only_action_cannot_give_or_charge(tmp_path: Path) -> None:
     assert charge.reply == HONEST_EN
     history = _history_text(charge_session, "mira")
     assert SPEAK_CUE not in history
+    assert ACT_CUE not in history
     assert "That'll be three gold" not in history
+    assert all(
+        call["tool_choice"] != "required" for call in charge_model.calls
+    )
 
 
 def test_speak_prompt_switches_language_with_the_player(
@@ -298,12 +325,70 @@ def test_speak_prompt_switches_language_with_the_player(
     )
 
 
+def test_history_keeps_only_game_tool_calls(tmp_path: Path) -> None:
+    """Spoken lines and GenerateStructuredOutput do not stay in context."""
+    session, model = _session(tmp_path)
+    first = asyncio.run(session.talk("bram", "Please give me a horseshoe."))
+    asyncio.run(session.talk("bram", "Hello."))
+    names = _history_tool_names(session, "bram")
+    history = _history_text(session, "bram")
+    assert "give_item" in names
+    assert "GenerateStructuredOutput" not in names
+    assert first.reply not in history
+    assert "Take the horseshoe" not in history
+    assert SPEAK_CUE not in history
+    assert ACT_CUE not in history
+    assert len([call for call in model.calls if call["phase"] == "act"]) == 2
+    assert len([call for call in model.calls if call["phase"] == "speak"]) == 2
+
+
+def test_out_of_range_emotion_is_mapped_once(tmp_path: Path) -> None:
+    """Unknown emotions and large deltas do not retry structured output."""
+    assert normalize_emotion("irritated") == "annoyed"
+    assert normalize_emotion("calm") == "neutral"
+    assert normalize_emotion("not-an-emotion") == "neutral"
+
+    rude_model = ScriptedNpcModel(forced_emotion="irritated", forced_delta=-15)
+    rude = TownSession(load_town_config(), tmp_path / "rude", rude_model)
+    insult = asyncio.run(rude.talk("bram", "You are a stupid thief."))
+    assert insult.emotion == "annoyed"
+    assert insult.affinity_delta == -3
+    assert rude.game.affinity("bram") == -3
+    assert (
+        len([call for call in rude_model.calls if call["phase"] == "speak"])
+        == 1
+    )
+
+    calm_model = ScriptedNpcModel(forced_emotion="calm", forced_delta=9)
+    calm = TownSession(load_town_config(), tmp_path / "calm", calm_model)
+    hello = asyncio.run(calm.talk("mira", "Hello."))
+    assert hello.emotion == "neutral"
+    assert hello.affinity_delta == 3
+    assert (
+        len([call for call in calm_model.calls if call["phase"] == "speak"])
+        == 1
+    )
+
+
 def _history_text(session: TownSession, npc_id: str) -> str:
     state = session._agent_states[npc_id]  # pylint: disable=protected-access
     parts = []
     for message in state.context:
         parts.append(message.get_text_content() or "")
     return "\n".join(parts)
+
+
+def _history_tool_names(session: TownSession, npc_id: str) -> list[str]:
+    state = session._agent_states[npc_id]  # pylint: disable=protected-access
+    names = []
+    for message in state.context:
+        content = getattr(message, "content", None)
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if getattr(block, "type", None) in {"tool_call", "tool_result"}:
+                names.append(block.name)
+    return names
 
 
 def _act_tools(model: ScriptedNpcModel, npc_name: str) -> set[str]:

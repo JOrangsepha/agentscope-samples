@@ -43,12 +43,13 @@ Millhaven starts the player with a worn cloak, 12 gold, and the quest
 | --- | --- | --- | --- |
 | `bram` | Bram | blacksmith | horseshoe, iron nail |
 | `mira` | Mira | innkeeper | brown loaf; the forging hammer once the quest is accepted; she can charge for a bed |
-| `rowan` | Rowan | elder | town seal; he alone can accept and complete The Lost Hammer |
+| `rowan` | Rowan | elder | no free gifts; he alone can accept and complete The Lost Hammer |
 
-Each line is two `Agent.reply` calls. The first may use that NPC's tools.
-The second has no game tools and must finish with
-`GenerateStructuredOutput`, so the spoken line is written after the tool
-results. The sample reads `reply`, `emotion`, and `affinity_delta` from
+Each line is an action `Agent.reply` followed by a spoken one. The action
+step ends once a game tool has run. If that first response calls no tool,
+it is asked once more to call one, including `no_action`. The spoken step
+has no game tools and must finish with `GenerateStructuredOutput`, so the
+line is written after the tool results. The sample reads `reply`, `emotion`, and `affinity_delta` from
 `message.structured_output`, clamps the delta, and writes it to
 `save/game_state.json`. The next turn's system prompt includes that score,
 so a friendlier history changes later wording.

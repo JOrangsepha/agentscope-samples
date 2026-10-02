@@ -39,11 +39,12 @@
 | --- | --- | --- | --- |
 | `bram` | Bram | 铁匠 | 马掌、铁钉 |
 | `mira` | Mira | 旅店老板 | 黑面包；任务接受后可以交出锻造锤；可以收取住宿费 |
-| `rowan` | Rowan | 长老 | 镇印；只有他能接受并完成「失落的锤子」 |
+| `rowan` | Rowan | 长老 | 不赠送物品；只有他能接受并完成「失落的锤子」 |
 
-玩家的每一句话对应两次 `Agent.reply`。第一次可以使用这个 NPC 自己的工具。
-第二次不再带游戏工具，并且必须调用 `GenerateStructuredOutput`，因此台词写在
-工具结果之后。示例从 `message.structured_output` 读取 `reply`、`emotion` 和
+玩家的每一句话先走一次行动 `Agent.reply`，再走一次说话。行动步骤在游戏
+工具执行后就结束。如果第一次响应没有调用工具，会再要求一次，包括
+`no_action`。说话步骤不再带游戏工具，并且必须调用
+`GenerateStructuredOutput`，因此台词写在工具结果之后。示例从 `message.structured_output` 读取 `reply`、`emotion` 和
 `affinity_delta`，把变化量限制在 -3 到 3，并写入 `save/game_state.json`。
 下一轮的系统提示会带上这个分数，因此关系会影响之后的措辞。
 

@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
-from agentscope.message import AssistantMsg, UserMsg
+from agentscope.message import TextBlock, UserMsg
 from agentscope.middleware import AgenticMemoryMiddleware, MiddlewareBase
-from agentscope.model import ChatModelBase
+from agentscope.model import ChatModelBase, ChatResponse
 from agentscope.permission import PermissionMode
 from agentscope.state import AgentState
-from agentscope.tool import ToolChoice, Toolkit
+from agentscope.tool import Toolkit
 
 from game_state import GameState
 from memory_store import remember_fact
@@ -19,17 +19,20 @@ from npc_config import TownConfig
 from prompts import NPC_MEMORY_INSTRUCTIONS, build_system_prompt
 from schema import NpcTurn
 from speech import (
+    ACT_CUE,
     SPEAK_CUE,
     guard_unproven_transfer,
     learn_player_name,
+    normalize_emotion,
     polish_reply,
     reply_language,
 )
-from tools import build_npc_tools
+from tools import GAME_TOOL_NAMES, build_npc_tools
 
 _DELTA_MIN = -3
 _DELTA_MAX = 3
 _NOTABLE_DELTA = 2
+_GAME_TOOLS = frozenset(GAME_TOOL_NAMES)
 
 
 @dataclass
@@ -88,6 +91,8 @@ class TownSession:
             UserMsg(name=self.game.player_name, content=player_text),
         )
         state = self._agent_states[npc_id]
+        if not _turn_has_game_tool(state, player_text):
+            await actor.reply(UserMsg(name="director", content=_act_cue()))
         _drop_action_prose(state, player_text)
         speaker = self._make_agent(
             npc_id,
@@ -114,7 +119,7 @@ class TownSession:
             _new_items(before_items, self.game.inventory),
             self.game.gold < before_gold,
         )
-        _keep_turn_local(state, player_text, result.reply, npc.name)
+        _scrub_history(state)
         return result
 
     def _make_agent(
@@ -138,7 +143,7 @@ class TownSession:
                     self.memory_dir(npc_id),
                 ),
             )
-            middlewares.append(RequireToolMiddleware())
+            middlewares.append(ActionStopMiddleware())
             limit = 8
         else:
             toolkit = Toolkit()
@@ -194,19 +199,28 @@ def _memory_middleware(workdir: Path) -> AgenticMemoryMiddleware:
     )
 
 
-class RequireToolMiddleware(MiddlewareBase):
-    """Ask for a tool until this action turn has produced one."""
+class ActionStopMiddleware(MiddlewareBase):
+    """End the action loop once a game tool has already run."""
 
     async def on_model_call(self, agent, input_kwargs, next_handler):
-        """Set tool_choice to required before any tool result exists."""
+        """Skip the model when this turn already has a game tool result."""
         del agent
-        updated = dict(input_kwargs)
-        choice = updated.get("tool_choice")
-        mode = getattr(choice, "mode", None)
-        pending = _awaiting_action(updated.get("messages") or [])
-        if updated.get("tools") and mode in (None, "auto") and pending:
-            updated["tool_choice"] = ToolChoice(mode="required")
-        return await next_handler(**updated)
+        messages = input_kwargs.get("messages") or []
+        if _game_tools_done(messages):
+            return ChatResponse(
+                content=[TextBlock(text="Done.")],
+                is_last=True,
+            )
+        return await next_handler(**input_kwargs)
+
+
+def _act_cue() -> str:
+    """One retry when the action step returned no game tool."""
+    return (
+        f"{ACT_CUE}\n"
+        "You must call a tool now. Call no_action if nothing should "
+        "change. Do not write a spoken line."
+    )
 
 
 def _speak_cue(player_text: str, language: str) -> str:
@@ -246,9 +260,12 @@ def _apply_turn(
             affinity=game.affinity(npc_id),
             affinity_reason="The model did not return structured output.",
         )
-    delta = int(payload["affinity_delta"])
+    try:
+        delta = int(payload.get("affinity_delta", 0))
+    except (TypeError, ValueError):
+        delta = 0
     delta = max(_DELTA_MIN, min(_DELTA_MAX, delta))
-    emotion = str(payload["emotion"])
+    emotion = normalize_emotion(str(payload.get("emotion", "")))
     reason = str(payload["affinity_reason"])
     reply = polish_reply(str(payload["reply"]), reason) or "(no reply)"
     reply = guard_unproven_transfer(
@@ -289,15 +306,14 @@ def _new_items(before: list[str], after: list[str]) -> list[str]:
     return granted
 
 
-def _awaiting_action(messages: list) -> bool:
+def _game_tools_done(messages: list) -> bool:
+    """True when a game tool result already follows the latest user line."""
     for message in reversed(messages):
-        role = getattr(message, "role", None)
-        if role == "user":
-            return True
-        getter = getattr(message, "get_content_blocks", None)
-        if getter and getter("tool_result"):
+        if getattr(message, "role", None) == "user":
             return False
-    return True
+        if _named_tool_blocks(message, {"tool_result"}):
+            return True
+    return False
 
 
 def _player_index(context: list, player_text: str) -> int | None:
@@ -310,19 +326,37 @@ def _player_index(context: list, player_text: str) -> int | None:
     return found
 
 
-def _tool_only(message) -> bool:
-    """Keep tool calls and results. Drop the message when none remain."""
+def _named_tool_blocks(message, kinds: set[str]) -> list:
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return []
+    return [
+        block
+        for block in content
+        if getattr(block, "type", None) in kinds
+        and getattr(block, "name", None) in _GAME_TOOLS
+    ]
+
+
+def _keep_game_tools(message) -> bool:
+    """Keep real game tool calls and results. Drop prose and other tools."""
     if getattr(message, "role", None) != "assistant":
         return False
-    kept = [
-        block
-        for block in message.content
-        if getattr(block, "type", None) in {"tool_call", "tool_result"}
-    ]
+    kept = _named_tool_blocks(message, {"tool_call", "tool_result"})
     if not kept:
         return False
     message.content = kept
     return True
+
+
+def _turn_has_game_tool(state: AgentState, player_text: str) -> bool:
+    start = _player_index(state.context, player_text)
+    if start is None:
+        return False
+    for message in state.context[start + 1 :]:
+        if _named_tool_blocks(message, {"tool_result"}):
+            return True
+    return False
 
 
 def _drop_action_prose(state: AgentState, player_text: str) -> None:
@@ -330,30 +364,25 @@ def _drop_action_prose(state: AgentState, player_text: str) -> None:
     start = _player_index(state.context, player_text)
     if start is None:
         return
-    kept = []
-    for message in state.context[start + 1 :]:
-        if _tool_only(message):
-            kept.append(message)
+    kept = [
+        message
+        for message in state.context[start + 1 :]
+        if _keep_game_tools(message)
+    ]
     state.context = list(state.context[: start + 1]) + kept
 
 
-def _keep_turn_local(
-    state: AgentState,
-    player_text: str,
-    reply: str,
-    npc_name: str,
-) -> None:
-    """Drop the speak cue and store the spoken line, not action prose."""
-    start = _player_index(state.context, player_text)
-    if start is None:
-        return
+def _scrub_history(state: AgentState) -> None:
+    """Keep player lines and game tool calls. Drop cues and spoken lines."""
     kept = []
-    for message in state.context[start + 1 :]:
+    for message in state.context:
+        role = getattr(message, "role", None)
         text = message.get_text_content() or ""
-        if message.role == "user" and text.startswith(SPEAK_CUE):
-            continue
-        if _tool_only(message):
+        if role == "user":
+            if text.startswith((SPEAK_CUE, ACT_CUE)):
+                continue
             kept.append(message)
-    if reply:
-        kept.append(AssistantMsg(name=npc_name, content=reply))
-    state.context = list(state.context[: start + 1]) + kept
+            continue
+        if _keep_game_tools(message):
+            kept.append(message)
+    state.context = kept
