@@ -11,7 +11,12 @@ class NpcTurn(BaseModel):
     """What the NPC says, and how the relationship shifts."""
 
     reply: str = Field(
-        description="Spoken line, in character, one or two sentences.",
+        description=(
+            "Spoken line in the player's language, one or two sentences, "
+            "with no asterisks or stage directions. Mention an item, "
+            "coins, or a quest change only if a tool result this turn "
+            "says it happened."
+        ),
     )
     emotion: Literal[
         "neutral",
@@ -22,7 +27,11 @@ class NpcTurn(BaseModel):
         "suspicious",
     ] = Field(description="Emotion shown to the player this turn.")
     affinity_delta: int = Field(
-        description="Favorability change this turn, from -3 to 3.",
+        description=(
+            "Favorability change from -3 to 3. Use a negative number "
+            "only for rudeness, threats, or a broken promise. Use 0 "
+            "when a polite request cannot be fulfilled."
+        ),
         ge=-3,
         le=3,
     )

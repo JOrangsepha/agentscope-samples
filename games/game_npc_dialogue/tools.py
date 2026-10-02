@@ -2,6 +2,7 @@
 """Game tools registered on each NPC agent."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from agentscope.permission import PermissionBehavior, PermissionDecision
@@ -15,40 +16,31 @@ _ALLOW = PermissionDecision(
     message="Town gameplay tools are allowed.",
 )
 
+# Removed before the spoken reply so that line cannot move gold or quests.
+GAME_TOOL_NAMES = [
+    "give_item",
+    "remember_player",
+    "charge_player",
+    "accept_quest",
+    "complete_quest",
+]
+
 
 def build_npc_tools(
     state: GameState,
     npc_id: str,
     memory_dir: Path,
 ) -> list[FunctionTool]:
-    """Tools that mutate this town's save for one NPC."""
+    """Tools this NPC is allowed to call. Quest and gold are not universal."""
+    npc = state.config.npc(npc_id)
 
     def give_item(item: str) -> str:
-        """Give the player an item from this NPC's stock.
+        """Give the player an item from the stock you can give now.
 
         Args:
-            item: Item name. It must be one of the gifts you carry.
+            item: Item name. It must be on your current stock list.
         """
         return state.give_item(npc_id, item)
-
-    def adjust_gold(amount: int, reason: str) -> str:
-        """Change how much gold the player is carrying.
-
-        Args:
-            amount: Coins to add. Use a negative number when the player pays.
-            reason: Short reason, such as a reward or a purchase.
-        """
-        return state.adjust_gold(amount, reason)
-
-    def update_quest(quest_id: str, status: str, progress: int) -> str:
-        """Update a quest's status and absolute progress.
-
-        Args:
-            quest_id: Quest id from the game state, such as lost_hammer.
-            status: One of available, accepted, or completed.
-            progress: Absolute progress count, not a delta.
-        """
-        return state.update_quest(quest_id, status, progress)
 
     def remember_player(fact: str) -> str:
         """Save one durable fact about the player for later sessions.
@@ -58,7 +50,51 @@ def build_npc_tools(
         """
         return remember_fact(memory_dir, fact)
 
-    functions = (give_item, adjust_gold, update_quest, remember_player)
+    def charge_player(amount: int, reason: str) -> str:
+        """Charge the player for a service. This never adds gold.
+
+        Args:
+            amount: Coins the player pays. Must be greater than zero.
+            reason: Short reason, such as a bed or a meal.
+        """
+        return state.charge(amount, reason)
+
+    def accept_quest(quest_id: str) -> str:
+        """Accept a quest you give, once, while it is still available.
+
+        Args:
+            quest_id: Quest id from the game state, such as lost_hammer.
+        """
+        result = state.accept_quest(npc_id, quest_id)
+        if "now accepted" in result:
+            remember_fact(
+                memory_dir,
+                f"The player accepted quest {quest_id}.",
+            )
+        return result
+
+    def complete_quest(quest_id: str) -> str:
+        """Complete a quest you give if the player is carrying the proof.
+
+        The reward is paid by the game, once. Calling this again does not
+        pay a second time, and speech alone is not proof.
+
+        Args:
+            quest_id: Quest id from the game state, such as lost_hammer.
+        """
+        result = state.complete_quest(npc_id, quest_id)
+        if "is completed" in result and "already" not in result:
+            remember_fact(
+                memory_dir,
+                f"The player completed quest {quest_id}.",
+            )
+        return result
+
+    functions: list[Callable[..., str]] = [give_item, remember_player]
+    if npc.can_charge:
+        functions.append(charge_player)
+    if state.config.gives_quests(npc_id):
+        functions.extend([accept_quest, complete_quest])
     return [
         FunctionTool(
             func,

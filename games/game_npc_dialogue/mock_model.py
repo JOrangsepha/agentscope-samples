@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """Keyword-scripted chat model for offline tests and the demo CLI.
 
-The script inspects the latest player line and the system prompt (which
-already contains persona, affinity, and MEMORY.md). It emits the same
-tool calls a live model is asked to emit, then finishes the turn with
-``GenerateStructuredOutput``.
+Act steps may call the game tools that were actually offered. The spoken
+line is a later call that only emits ``GenerateStructuredOutput``, after
+tool results are already in the conversation.
 """
 from __future__ import annotations
 
@@ -14,14 +13,23 @@ from typing import Any
 
 from agentscope.credential import CredentialBase
 from agentscope.formatter import DashScopeChatFormatter
-from agentscope.message import ToolCallBlock
+from agentscope.message import TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse
+
+from speech import SPEAK_CUE
 
 _NAME_RE = re.compile(r"my name is ([a-z]+)", re.IGNORECASE)
 _AFFINITY_RE = re.compile(r"Affinity:\s*(-?\d+)")
 _NPC_RE = re.compile(r"^You are ([^,]+),", re.MULTILINE)
+_STRUCTURED = "GenerateStructuredOutput"
 
-_GIFTS = ("horseshoe", "iron nail", "brown loaf", "town seal")
+_GIFTS = (
+    "horseshoe",
+    "iron nail",
+    "brown loaf",
+    "town seal",
+    "forging hammer",
+)
 _GREETINGS = {"hello", "hello.", "hi", "hi."}
 _DEFAULT_LINES = {
     "Bram": "The forge is hot. Speak plainly.",
@@ -61,23 +69,32 @@ class ScriptedNpcModel(ChatModelBase):
         tool_choice: Any = None,
         **kwargs: Any,
     ) -> ChatResponse:
-        """Return scripted tool calls for one reasoning step."""
+        """Return one act step, or the spoken structured output."""
         del model_name, tool_choice, kwargs
         system = _system_text(messages)
-        user = _latest_user_text(messages)
+        player = _player_text(messages)
+        names = _tool_names(tools)
+        this_turn = _since_player(messages)
+        saw = _saw_tool_result(this_turn)
+        phase = "speak" if _STRUCTURED in names else "act"
         self.calls.append(
             {
+                "phase": phase,
                 "system": system,
-                "user": user,
-                "tools": ",".join(_tool_names(tools)),
+                "user": player,
+                "tools": ",".join(names),
+                "saw_tool_result": "yes" if saw else "no",
             },
         )
-        blocks = _game_tool_calls(system, user)
-        reply, emotion, delta, reason = _choose_reply(system, user)
-        blocks.append(
-            ToolCallBlock(
+        if phase == "speak":
+            reply, emotion, delta, reason = _choose_reply(
+                system,
+                player,
+                _tool_result_text(this_turn),
+            )
+            block = ToolCallBlock(
                 id=f"structured-{len(self.calls)}",
-                name="GenerateStructuredOutput",
+                name=_STRUCTURED,
                 input=json.dumps(
                     {
                         "reply": reply,
@@ -86,9 +103,19 @@ class ScriptedNpcModel(ChatModelBase):
                         "affinity_reason": reason,
                     },
                 ),
-            ),
-        )
-        return ChatResponse(content=blocks, is_last=True)
+            )
+            return ChatResponse(content=[block], is_last=True)
+        if saw:
+            return _text("The tools have finished.")
+        offered = set(names)
+        blocks = _game_tool_calls(system, player, offered)
+        if blocks:
+            return ChatResponse(content=blocks, is_last=True)
+        return _text("Nothing to change.")
+
+
+def _text(text: str) -> ChatResponse:
+    return ChatResponse(content=[TextBlock(text=text)], is_last=True)
 
 
 def _tool_names(tools: list[dict] | None) -> list[str]:
@@ -109,11 +136,55 @@ def _system_text(messages: list) -> str:
     return "\n".join(parts)
 
 
-def _latest_user_text(messages: list) -> str:
+def _player_text(messages: list) -> str:
     for message in reversed(messages):
-        if getattr(message, "role", None) == "user":
-            return message.get_text_content() or ""
+        if getattr(message, "role", None) != "user":
+            continue
+        text = message.get_text_content() or ""
+        if text.startswith(SPEAK_CUE):
+            continue
+        return text
     return ""
+
+
+def _since_player(messages: list) -> list:
+    """Messages after the latest real player line, excluding the speak cue."""
+    start = 0
+    for index, message in enumerate(messages):
+        if getattr(message, "role", None) != "user":
+            continue
+        text = message.get_text_content() or ""
+        if text.startswith(SPEAK_CUE):
+            continue
+        start = index + 1
+    return list(messages[start:])
+
+
+def _saw_tool_result(messages: list) -> bool:
+    for message in messages:
+        if _tool_blocks(message):
+            return True
+    return False
+
+
+def _tool_result_text(messages: list) -> str:
+    parts: list[str] = []
+    for message in messages:
+        for block in _tool_blocks(message):
+            output = getattr(block, "output", "")
+            if isinstance(output, str):
+                parts.append(output)
+            else:
+                for item in output:
+                    parts.append(getattr(item, "text", str(item)))
+    return "\n".join(parts)
+
+
+def _tool_blocks(message) -> list:
+    getter = getattr(message, "get_content_blocks", None)
+    if getter is None:
+        return []
+    return list(getter("tool_result"))
 
 
 def _npc_name(system: str) -> str:
@@ -130,6 +201,13 @@ def _affinity(system: str) -> int:
     return int(match.group(1))
 
 
+def _stock_text(system: str) -> str:
+    for line in system.splitlines():
+        if line.lower().startswith("stock you can give now:"):
+            return line.lower()
+    return ""
+
+
 def _call(name: str, arguments: dict, suffix: str) -> ToolCallBlock:
     return ToolCallBlock(
         id=f"{name}-{suffix}",
@@ -138,81 +216,91 @@ def _call(name: str, arguments: dict, suffix: str) -> ToolCallBlock:
     )
 
 
-def _game_tool_calls(system: str, user: str) -> list[ToolCallBlock]:
-    """Side-effect tools for this line. Structured output is separate."""
+def _claims_hammer(user_l: str) -> bool:
+    if "found the hammer" in user_l or "found your forging hammer" in user_l:
+        return True
+    if "hammer is back" in user_l or "returned the hammer" in user_l:
+        return True
+    if "here it is" in user_l and "hammer" in user_l:
+        return True
+    if "reward" in user_l and "hammer" in user_l:
+        return True
+    return False
+
+
+def _wants_quest(user_l: str) -> bool:
+    if _claims_hammer(user_l):
+        return False
+    if "quest" in user_l:
+        return True
+    return "accept" in user_l and "hammer" in user_l
+
+
+def _game_tool_calls(
+    system: str,
+    user: str,
+    offered: set[str],
+) -> list[ToolCallBlock]:
+    """Side-effect tools for this line. Structured output is a later call."""
     user_l = user.lower()
-    system_l = system.lower()
     calls: list[ToolCallBlock] = []
     name_match = _NAME_RE.search(user)
-    if name_match:
+    if name_match and "remember_player" in offered:
         name = name_match.group(1).capitalize()
         if "bak" in user_l:
             fact = f"The player's name is {name}, a baker."
         else:
             fact = f"The player's name is {name}."
         calls.append(_call("remember_player", {"fact": fact}, name))
-    gift = _requested_gift(user_l, system_l)
-    if gift is not None:
+    gift = _requested_gift(user_l, system)
+    if gift is not None and "give_item" in offered:
         calls.append(_call("give_item", {"item": gift}, gift))
-    if "found the hammer" in user_l or "hammer is back" in user_l:
+    if _claims_hammer(user_l) and "complete_quest" in offered:
         calls.append(
             _call(
-                "update_quest",
-                {
-                    "quest_id": "lost_hammer",
-                    "status": "completed",
-                    "progress": 1,
-                },
+                "complete_quest",
+                {"quest_id": "lost_hammer"},
                 "done",
             ),
         )
+    elif _wants_quest(user_l) and "accept_quest" in offered:
         calls.append(
             _call(
-                "adjust_gold",
-                {
-                    "amount": 8,
-                    "reason": "reward for returning the hammer",
-                },
-                "reward",
-            ),
-        )
-    elif "quest" in user_l or ("accept" in user_l and "hammer" in user_l):
-        calls.append(
-            _call(
-                "update_quest",
-                {
-                    "quest_id": "lost_hammer",
-                    "status": "accepted",
-                    "progress": 0,
-                },
+                "accept_quest",
+                {"quest_id": "lost_hammer"},
                 "accepted",
             ),
         )
     return calls
 
 
-def _requested_gift(user_l: str, system_l: str) -> str | None:
+def _requested_gift(user_l: str, system: str) -> str | None:
+    stock = _stock_text(system)
     for gift in _GIFTS:
-        if gift in user_l and gift in system_l:
+        if gift in user_l and gift in stock:
             return gift
     return None
 
 
-def _choose_reply(system: str, user: str) -> tuple[str, str, int, str]:
+def _choose_reply(
+    system: str,
+    user: str,
+    tool_text: str,
+) -> tuple[str, str, int, str]:
     """Pick the spoken line, emotion, and affinity delta."""
     user_l = user.lower()
     matchers = (
         _recalled_reply,
         _introduction_reply,
         _rude_reply,
-        _thanks_reply,
         _hammer_reply,
+        _thanks_reply,
         _quest_reply,
         _gift_reply,
         _warm_greeting_reply,
     )
     for matcher in matchers:
-        chosen = matcher(system, user_l)
+        chosen = matcher(system, user_l, tool_text)
         if chosen is not None:
             return chosen
     npc = _npc_name(system)
@@ -227,7 +315,9 @@ def _choose_reply(system: str, user: str) -> tuple[str, str, int, str]:
 def _recalled_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
+    del tool_text
     if "lira" in system.lower() and "remember" in user_l:
         return (
             "Aye, I remember you, Lira the baker.",
@@ -241,8 +331,9 @@ def _recalled_reply(
 def _introduction_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
-    del system
+    del system, tool_text
     match = _NAME_RE.search(user_l)
     if match is None:
         return None
@@ -253,8 +344,9 @@ def _introduction_reply(
 def _thanks_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
-    del system
+    del system, tool_text
     if "thank" not in user_l:
         return None
     return (
@@ -268,24 +360,41 @@ def _thanks_reply(
 def _hammer_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
     del system
-    if "found the hammer" in user_l or "hammer is back" in user_l:
+    if not _claims_hammer(user_l):
+        return None
+    result = tool_text.lower()
+    if "already completed" in result:
+        return (
+            "The hammer is already home. I will not pay twice.",
+            "neutral",
+            0,
+            "The quest was already rewarded.",
+        )
+    if "gained" in result and "gold" in result:
         return (
             "The hammer is home. Take these coins.",
             "happy",
             2,
             "The player finished the quest.",
         )
-    return None
+    return (
+        "I do not see the forging hammer in your pack.",
+        "neutral",
+        0,
+        "No proof of the hammer.",
+    )
 
 
 def _quest_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
-    del system
-    if "quest" in user_l or ("accept" in user_l and "hammer" in user_l):
+    del system, tool_text
+    if _wants_quest(user_l):
         return (
             "The Lost Hammer is yours. Bring it back to Millhaven.",
             "neutral",
@@ -298,8 +407,10 @@ def _quest_reply(
 def _gift_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
-    gift = _requested_gift(user_l, system.lower())
+    del tool_text
+    gift = _requested_gift(user_l, system)
     if gift is None:
         return None
     return (
@@ -313,7 +424,9 @@ def _gift_reply(
 def _warm_greeting_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
+    del tool_text
     if _affinity(system) >= 2 and user_l.strip() in _GREETINGS:
         return (
             "It is good to see you again.",
@@ -333,8 +446,9 @@ def _name_reply(name: str, user_l: str) -> str:
 def _rude_reply(
     system: str,
     user_l: str,
+    tool_text: str,
 ) -> tuple[str, str, int, str] | None:
-    del system
+    del system, tool_text
     if "thief" in user_l or "stupid" in user_l:
         return (
             "Watch your tongue.",

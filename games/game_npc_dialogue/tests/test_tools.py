@@ -21,20 +21,24 @@ def _session(tmp_path: Path) -> TownSession:
 
 
 def test_give_item_and_quest_tools_persist(tmp_path: Path) -> None:
-    """A gift, an accepted quest, and a reward are written to disk."""
+    """A gift, proof, and one configured reward are written to disk."""
     session = _session(tmp_path)
     asyncio.run(session.talk("bram", "Please give me a horseshoe."))
-    asyncio.run(
-        session.talk("rowan", "I accept the lost hammer quest."),
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(session.talk("mira", "Please give me a forging hammer."))
+    done = asyncio.run(
+        session.talk("rowan", "I found the hammer. Here it is."),
     )
-    asyncio.run(session.talk("bram", "I found the hammer."))
 
     reloaded = GameState(tmp_path / "game_state.json", load_town_config())
     assert "horseshoe" in reloaded.inventory
+    assert "forging hammer" not in reloaded.inventory
     quest = reloaded.data["quests"]["lost_hammer"]
     assert quest["status"] == "completed"
     assert quest["progress"] == 1
+    assert quest["rewarded"] is True
     assert reloaded.gold == 20
+    assert done.reply == "The hammer is home. Take these coins."
 
 
 def test_tool_rejects_a_gift_the_npc_does_not_stock(tmp_path: Path) -> None:

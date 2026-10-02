@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from npc_config import TownConfig
+from npc_config import QuestSpec, TownConfig
 
-_QUEST_STATUSES = {"available", "accepted", "completed"}
 _AFFINITY_MIN = -100
 _AFFINITY_MAX = 100
 
@@ -33,6 +32,7 @@ class GameState:
                 "status": quest.status,
                 "progress": quest.progress,
                 "goal": quest.goal,
+                "rewarded": False,
             }
             for quest_id, quest in config.quests.items()
         }
@@ -50,6 +50,7 @@ class GameState:
             "quests": quests,
             "affinity": affinity,
             "emotion": emotion,
+            "notable": {},
         }
 
     def save(self) -> None:
@@ -86,6 +87,25 @@ class GameState:
         """The emotion this NPC showed on their last turn."""
         return str(self.data["emotion"].get(npc_id, "neutral"))
 
+    def notable(self, npc_id: str) -> str:
+        """Last strong impression, kept until another one replaces it."""
+        notes = self.data.setdefault("notable", {})
+        return str(notes.get(npc_id, ""))
+
+    def set_player_name(self, name: str) -> None:
+        """Replace the stored player name."""
+        cleaned = " ".join(name.split())
+        if not cleaned:
+            return
+        self.data["player"]["name"] = cleaned
+        self.save()
+
+    def set_notable(self, npc_id: str, note: str) -> None:
+        """Remember one strong impression. Mild turns do not call this."""
+        self.config.npc(npc_id)
+        self.data.setdefault("notable", {})[npc_id] = note
+        self.save()
+
     def apply_affinity(self, npc_id: str, delta: int) -> int:
         """Add ``delta`` and clamp the result to [-100, 100]."""
         self.config.npc(npc_id)
@@ -101,12 +121,24 @@ class GameState:
         self.data["emotion"][npc_id] = emotion
         self.save()
 
-    def give_item(self, npc_id: str, item: str) -> str:
-        """Move one of the NPC's stocked gifts into the inventory."""
+    def stock(self, npc_id: str) -> list[str]:
+        """Gifts this NPC may hand over right now, including quest items."""
         npc = self.config.npc(npc_id)
-        match = _match_choice(item, npc.gifts)
+        items = list(npc.gifts)
+        for gift in npc.quest_gifts:
+            quest = self.data["quests"].get(gift.when_quest)
+            if quest is None or quest.get("status") != gift.when_status:
+                continue
+            if gift.item not in items:
+                items.append(gift.item)
+        return items
+
+    def give_item(self, npc_id: str, item: str) -> str:
+        """Move one stocked gift into the inventory."""
+        npc = self.config.npc(npc_id)
+        match = _match_choice(item, self.stock(npc_id))
         if match is None:
-            stock = ", ".join(npc.gifts) or "(nothing)"
+            stock = ", ".join(self.stock(npc_id)) or "(nothing)"
             return (
                 f"{npc.name} cannot give '{item}'. " f"Stock on hand: {stock}."
             )
@@ -133,26 +165,54 @@ class GameState:
             f"Gold is now {updated}."
         )
 
-    def update_quest(
-        self,
-        quest_id: str,
-        status: str,
-        progress: int,
-    ) -> str:
-        """Set a quest's status and absolute progress."""
-        quest = self.data["quests"].get(quest_id)
-        if quest is None:
-            known = ", ".join(sorted(self.data["quests"])) or "(none)"
-            return f"Unknown quest '{quest_id}'. Known quests: {known}."
-        if status not in _QUEST_STATUSES:
-            allowed = ", ".join(sorted(_QUEST_STATUSES))
-            return f"Invalid status '{status}'. Use one of: {allowed}."
-        quest["status"] = status
-        quest["progress"] = max(0, int(progress))
+    def charge(self, amount: int, reason: str) -> str:
+        """Take coins from the player. A charge never adds gold."""
+        amount = int(amount)
+        if amount <= 0:
+            return "A charge must be a positive number of coins."
+        return self.adjust_gold(-amount, reason)
+
+    def accept_quest(self, npc_id: str, quest_id: str) -> str:
+        """Let the quest giver move an available quest to accepted, once."""
+        quest, rule, refusal = self._quest_context(npc_id, quest_id)
+        if refusal:
+            return refusal
+        assert quest is not None and rule is not None
+        status = str(quest["status"])
+        if status == "accepted":
+            return f"Quest {quest_id} is already accepted."
+        if status == "completed" or self._reward_already_paid(quest):
+            return f"Quest {quest_id} is already completed."
+        if status != "available":
+            return f"Quest {quest_id} cannot be accepted from {status}."
+        quest["status"] = "accepted"
         self.save()
         return (
-            f"Quest {quest_id} is now {status} "
+            f"Quest {quest_id} is now accepted "
             f"({quest['progress']}/{quest['goal']})."
+        )
+
+    def complete_quest(self, npc_id: str, quest_id: str) -> str:
+        """Complete a quest once, with proof, and pay the configured reward."""
+        quest, rule, refusal = self._quest_context(npc_id, quest_id)
+        if refusal:
+            return refusal
+        assert quest is not None and rule is not None
+        if self._reward_already_paid(quest):
+            return f"Quest {quest_id} is already completed. No further reward."
+        if quest.get("status") != "accepted":
+            return f"Quest {quest_id} is not accepted yet."
+        missing = self._missing_proof(rule)
+        if missing:
+            return missing
+        self._consume_proof(rule)
+        quest["status"] = "completed"
+        quest["progress"] = int(quest["goal"])
+        quest["rewarded"] = True
+        paid = self._pay_reward(quest, rule)
+        return (
+            f"Quest {quest_id} is completed. "
+            f"The {rule.required_item or 'proof'} was turned in.{paid}"
         )
 
     def describe(self) -> str:
@@ -184,6 +244,62 @@ class GameState:
                 f"{quest['description']}",
             )
         return lines
+
+    def _quest_context(
+        self,
+        npc_id: str,
+        quest_id: str,
+    ) -> tuple[dict | None, QuestSpec | None, str]:
+        quest = self.data["quests"].get(quest_id)
+        if quest is None:
+            known = ", ".join(sorted(self.data["quests"])) or "(none)"
+            return (
+                None,
+                None,
+                (f"Unknown quest '{quest_id}'. Known quests: {known}."),
+            )
+        rule = self.config.quests.get(quest_id)
+        giver = rule.giver if rule is not None else ""
+        if giver and giver != npc_id:
+            giver_name = self.config.npc(giver).name
+            return (
+                quest,
+                rule,
+                (f"Only {giver_name} can change quest {quest_id}."),
+            )
+        if rule is None:
+            return quest, None, f"Quest {quest_id} has no configured rules."
+        return quest, rule, ""
+
+    def _reward_already_paid(self, quest: dict) -> bool:
+        if quest.get("rewarded"):
+            return True
+        # Older saves marked the quest completed without a rewarded flag.
+        return quest.get("status") == "completed"
+
+    def _missing_proof(self, rule: QuestSpec) -> str:
+        required = rule.required_item
+        if required and required not in self.inventory:
+            return (
+                f"Cannot complete {rule.quest_id}: the player is not "
+                f"carrying {required}."
+            )
+        return ""
+
+    def _consume_proof(self, rule: QuestSpec) -> None:
+        required = rule.required_item
+        if required and required in self.data["player"]["inventory"]:
+            self.data["player"]["inventory"].remove(required)
+
+    def _pay_reward(self, quest: dict, rule: QuestSpec) -> str:
+        if rule.reward_gold <= 0:
+            self.save()
+            return ""
+        paid = self.adjust_gold(
+            rule.reward_gold,
+            f"reward for {quest['title']}",
+        )
+        return " " + paid
 
 
 def _match_choice(requested: str, choices: list[str]) -> str | None:

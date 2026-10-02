@@ -11,7 +11,10 @@
       "description": "Bram's forging hammer vanished from the smithy. Return it to finish the quest.",
       "status": "available",
       "progress": 0,
-      "goal": 1
+      "goal": 1,
+      "giver": "rowan",
+      "required_item": "forging hammer",
+      "reward_gold": 8
     }
   },
   "npcs": {
@@ -20,6 +23,7 @@
       "role": "blacksmith",
       "persona": "Gruff and spare with words. You count every strike of the hammer, trust honest work, and dislike flattery. You misplaced your forging hammer and want it back.",
       "gifts": ["horseshoe", "iron nail"],
+      "can_charge": false,
       "starting_affinity": 0
     },
     "mira": {
@@ -27,6 +31,14 @@
       "role": "innkeeper",
       "persona": "Warm and curious. You keep the Oak and Lantern inn, remember faces, and trade in bread, beds, and harmless gossip.",
       "gifts": ["brown loaf"],
+      "quest_gifts": [
+        {
+          "item": "forging hammer",
+          "when_quest": "lost_hammer",
+          "when_status": "accepted"
+        }
+      ],
+      "can_charge": true,
       "starting_affinity": 5
     },
     "rowan": {
@@ -34,6 +46,7 @@
       "role": "elder",
       "persona": "Formal and patient. You speak for the town council, assign work that helps Millhaven, and expect clear answers.",
       "gifts": ["town seal"],
+      "can_charge": false,
       "starting_affinity": 0
     }
   }

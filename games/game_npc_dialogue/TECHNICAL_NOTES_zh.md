@@ -23,18 +23,21 @@ flowchart TD
     Session --> Agent["agentscope.agent.Agent"]
     Prompt --> Agent
     Agent --> Model["ChatModel: DashScope / OpenAI / Ollama / mock"]
-    Agent --> Tools["give_item / adjust_gold / update_quest / remember_player"]
+    Agent --> Act["第一次 reply: 该 NPC 的游戏工具"]
+    Act --> Speak["第二次 reply: 仅 GenerateStructuredOutput"]
     Agent --> Memory["AgenticMemoryMiddleware"]
-    Tools --> Save["save/game_state.json"]
-    Tools --> Notes["save/memory/npc/Memory/MEMORY.md"]
+    Act --> Save["save/game_state.json"]
+    Act --> Notes["save/memory/npc/Memory/MEMORY.md"]
     Memory --> Notes
-    Model --> Structured["GenerateStructuredOutput → NpcTurn"]
-    Structured --> Save
+    Speak --> Polish["polish_reply"]
+    Polish --> Save
 ```
 
-一次 `talk()` 会新建 `Agent`，但复用该 NPC 的 `AgentState`，所以同一次进程里的
-短期对话还在。进程退出后短期上下文丢弃。下次来访只靠两份本地文件：游戏状态，
-以及每个 NPC 自己的 `MEMORY.md`。
+一次 `talk()` 会建两个 `Agent`：第一个带着该 NPC 的游戏工具，不要求结构化
+输出；第二个不带游戏工具，只生成 `NpcTurn`。两者复用该 NPC 的 `AgentState`，
+所以同一次进程里的短期对话还在，第二段也能看到第一段的工具结果。进程退出后
+短期上下文丢弃。下次来访只靠两份本地文件：游戏状态，以及每个 NPC 自己的
+`MEMORY.md`。
 
 ## 用到的 AgentScope 2.x API，以及为什么
 
@@ -65,11 +68,16 @@ flowchart TD
 拼进系统提示。测试用两个 `TownSession`、同一 `save_dir`、两份新的 `AgentState`
 证明：第二次调用时模型收到的系统提示含有 “Lira”，回复也点出这个名字。
 
-**工具。** `give_item` 只能送出该 NPC 配置里的赠礼；`adjust_gold` 拒绝让金币
-变成负数；`update_quest` 只接受 `available` / `accepted` / `completed`。
-三个写操作都 `is_concurrency_safe=False`，因此先于结构化输出顺序执行，并立即
-`save()`。脚本模型在一句话里同时发出游戏工具和 `GenerateStructuredOutput`，
-测试再从磁盘重新加载 `GameState` 检查马掌、任务和金币。
+**工具。** 每个 NPC 只有自己用得上的工具。三人都有 `give_item` 和
+`remember_player`。只有 `can_charge` 的 Mira 有 `charge_player`，而且它只扣
+金币。只有任务发布者 Rowan 有 `accept_quest` 和 `complete_quest`。模型没有
+`update_quest`，也不能直接加金币。完成「失落的锤子」必须由 Rowan 发起、任务
+已是 `accepted`、背包里有 `forging hammer`。代码收走锤子，把状态写成
+`completed`，并按配置里的 `reward_gold`（8）支付一次，同时置 `rewarded`。
+已经完成或已经发过奖的调用是空操作。旧存档如果只有 `completed`、没有
+`rewarded`，也视为已经发过。锤子本身由 Mira 的 `quest_gifts` 在任务被接受后
+送出，口头宣称不会凭空生成物品。写操作都 `is_concurrency_safe=False`，并立即
+`save()`。
 
 **情绪与好感。** `NpcTurn` 含 `reply`、`emotion`、`affinity_delta`（-3 到 3）
 和 `affinity_reason`。应用层把分数夹在 -100 到 100，并把情绪记在同一份 JSON。
@@ -86,17 +94,19 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **11 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **19 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）
 - 工具调用改写背包、任务、金币，以及拒绝不属于该 NPC 的赠礼（`test_tools.py`）
 - 情绪与好感度解析、落盘，并改变下一次问候（`test_emotion.py`）
 - 两个进程的 CLI：介绍自己、拿马掌、接任务，再次启动后记得 Lira（`test_cli.py`）
+- 实机里暴露的规则：空口交任务被拒绝、奖励只发一次、工具按 NPC 限制、
+  语言和评分规则写在提示里、自报姓名会更新、强烈好感变化写入记忆、
+  台词发生在工具结果之后（`test_live_fixes.py`）
 
 另外用同一脚本模型手工跑过 CLI，记录见 `README_zh.md` 的示例访问。
-真实 DashScope / OpenAI / Ollama 调用没有跑，当前环境没有 API Key，也没有
-本地 Ollama。
+DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没有跑。
 
 静态检查按仓库 `.pre-commit-config.yaml` 的参数，在本示例的 Python 文件上
 通过了 Black 23.3.0（行宽 79）、Flake8、Mypy 1.7.0 和 Pylint 3.0.2。
@@ -110,6 +120,43 @@ python -m pytest tests -q
 - `FunctionTool` 不传 `permission` 时行为是 ASK，无人值守循环会停在确认上。
 - 结构化输出不是模型直接吐 JSON，而是调用内置工具 `GenerateStructuredOutput`。参数名必须和 Pydantic 字段一致。
 - `AgenticMemoryMiddleware` 默认的记忆说明是面向编程助手的长提示，并且默认会再发一次检索模型调用。游戏示例换成了短说明，并关闭了异步检索。
+
+## 实机测试发现与修复
+
+用 DashScope `qwen-plus` 跑了 3 次来访、16 轮对话，没有异常。结构化输出每轮
+都有，三个人设能分开，跨 session 的名字记忆也生效。合计 25 次模型调用，输入
+37457 token、输出 2219 token。16 轮延迟合计 72.3 秒，平均约 4.5 秒/轮（约
+4.6 秒）。
+
+这次记录暴露的问题，以及代码里的对应改动：
+
+1. 背包里没有锻造锤时，Bram 仍调用 `update_quest(completed)`。任何 NPC 都能改
+   任何任务和金币。现在规则在配置和 `GameState` 里：只有发布者能接受和完成，
+   只能完成一次，必须先带着要求的物品。奖励由代码支付。
+2. 同一会话里，Rowan 对一句无关的话又调用了 `adjust_gold(+5)` 和
+   `update_quest`，金币从 9 加到 14，下一轮中文提问又加到 19。已完成的任务
+   再更新是空操作，不会第二次付钱。
+3. 游戏工具和 `GenerateStructuredOutput` 出现在同一次响应里，台词在工具结果
+   返回之前就写好了。`talk()` 先行动、再单独生成结构化台词，展示前再走
+   `polish_reply`。
+4. 玩家说中文时，除非明确要求，回复仍是英文。提示要求使用玩家刚才的语言。
+5. 礼貌但做不到的请求（钢剑）被扣了 2 点好感。提示写明：只有粗鲁、威胁或
+   失信才扣分，做不到的礼貌请求是 0。
+6. 辱骂和接任务没有写入记忆，所以第二次 Bram 说自己不记得语气，尽管好感已经
+   是 -4。`|delta| >= 2` 时自动写一条记忆，并把上一次强烈印象放进提示。接受
+   和完成任务也会记一笔。
+7. `player.name` 一直是 Traveler，Rowan 继续这么称呼。英文 “my name is …” 和
+   中文 “我叫…” 会在生成本轮提示之前更新名字。
+8. Mira 超过一两句，还写了 `*wipes a mug*`，并且口头答应给面包但没有调用工具。
+   提示限制句数和舞台指示；`polish_reply` 去掉星号动作并只留两句。
+9. 纯文本里曾漏出 `neutral`、`0` 和 `affinity_reason`。命令行本来就读
+   `structured_output`；`polish_reply` 再丢掉单独成行的情绪词、整数，以及与
+   理由完全相同的那一行。
+
+离线测试盖住了空口交任务、重复发奖、按 NPC 限制工具、提示里的语言规则，以及
+台词发生在工具结果之后。它们不能代替再跑一次真实模型。仍需实机确认的是：中文
+回复、钢剑这类请求不再扣分、Mira 的句长，以及模型是否真的等工具结果再开口、
+不再口头送出没有调用工具的物品。
 
 ## 局限
 

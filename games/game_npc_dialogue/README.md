@@ -25,8 +25,9 @@ API and is a separate example.
 ├── memory_store.py           # Writes MEMORY.md for long-term memory
 ├── prompts.py                # Persona and relationship system prompt
 ├── schema.py                 # Per-turn structured output
-├── tools.py                  # give_item, adjust_gold, update_quest, remember_player
-├── session.py                # One visit: agent, tools, memory, affinity
+├── speech.py                 # Player name, and cleanup of the spoken line
+├── tools.py                  # Per-NPC give, charge, quest, and memory tools
+├── session.py                # One visit: act, then speak, then save affinity
 ├── model_factory.py          # DashScope, OpenAI-compatible, Ollama, or mock
 ├── mock_model.py             # Scripted model for tests and offline play
 ├── requirements.txt
@@ -41,14 +42,20 @@ Millhaven starts the player with a worn cloak, 12 gold, and the quest
 | id | resident | role | can give |
 | --- | --- | --- | --- |
 | `bram` | Bram | blacksmith | horseshoe, iron nail |
-| `mira` | Mira | innkeeper | brown loaf |
-| `rowan` | Rowan | elder | town seal |
+| `mira` | Mira | innkeeper | brown loaf; the forging hammer once the quest is accepted; she can charge for a bed |
+| `rowan` | Rowan | elder | town seal; he alone can accept and complete The Lost Hammer |
 
-Each line is one `Agent.reply` call. The model may call tools, then must
-finish with `GenerateStructuredOutput`. The sample reads `reply`,
-`emotion`, and `affinity_delta` from `message.structured_output`, clamps
-the delta, and writes it to `save/game_state.json`. The next turn's system
-prompt includes that score, so a friendlier history changes later wording.
+Each line is two `Agent.reply` calls. The first may use that NPC's tools.
+The second has no game tools and must finish with
+`GenerateStructuredOutput`, so the spoken line is written after the tool
+results. The sample reads `reply`, `emotion`, and `affinity_delta` from
+`message.structured_output`, clamps the delta, and writes it to
+`save/game_state.json`. The next turn's system prompt includes that score,
+so a friendlier history changes later wording.
+
+Quest rewards are not a free-form gold tool. Rowan can complete The Lost
+Hammer only while the player is carrying a forging hammer. The game then
+removes the hammer and pays the 8 gold in `town_config.json` once.
 
 Facts worth keeping (a name, a trade, a promise) are written under
 `save/memory/<npc_id>/Memory/` by `AgenticMemoryMiddleware`. A new process
@@ -165,6 +172,6 @@ python -m pytest tests -q
 
 - Three personas in `town_config.json`, each with its own gift list
 - Cross-visit memory via AgentScope 2.x `AgenticMemoryMiddleware` (local Markdown, no vector DB)
-- Tools that update inventory, gold, and quest progress in `game_state.json`
+- Tools that update inventory, a charge, and quest progress in `game_state.json`, with the reward paid by code
 - Per-turn emotion and affinity, parsed from structured output and shown to the NPC next turn
 - Providers: DashScope (default), OpenAI-compatible endpoints, Ollama, and an offline mock

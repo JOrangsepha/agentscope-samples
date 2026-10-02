@@ -22,8 +22,9 @@
 ├── memory_store.py           # 为长期记忆写入 MEMORY.md
 ├── prompts.py                # 人设与关系系统提示
 ├── schema.py                 # 每轮结构化输出
-├── tools.py                  # give_item、adjust_gold、update_quest、remember_player
-├── session.py                # 一次访问：智能体、工具、记忆、好感度
+├── speech.py                 # 玩家姓名，以及台词清理
+├── tools.py                  # 按 NPC 区分的赠送、收费、任务和记忆工具
+├── session.py                # 一次访问：先行动，再说话，再保存好感度
 ├── model_factory.py          # DashScope、OpenAI 兼容、Ollama 或 mock
 ├── mock_model.py             # 供测试和离线游玩的脚本模型
 ├── requirements.txt
@@ -37,14 +38,18 @@
 | id | 居民 | 身份 | 可以赠送 |
 | --- | --- | --- | --- |
 | `bram` | Bram | 铁匠 | 马掌、铁钉 |
-| `mira` | Mira | 旅店老板 | 黑面包 |
-| `rowan` | Rowan | 长老 | 镇印 |
+| `mira` | Mira | 旅店老板 | 黑面包；任务接受后可以交出锻造锤；可以收取住宿费 |
+| `rowan` | Rowan | 长老 | 镇印；只有他能接受并完成「失落的锤子」 |
 
-玩家的每一句话对应一次 `Agent.reply`。模型可以调用工具，最后必须调用
-`GenerateStructuredOutput`。示例从 `message.structured_output` 读取
-`reply`、`emotion` 和 `affinity_delta`，把变化量限制在 -3 到 3，并写入
-`save/game_state.json`。下一轮的系统提示会带上这个分数，因此关系会影响
-之后的措辞。
+玩家的每一句话对应两次 `Agent.reply`。第一次可以使用这个 NPC 自己的工具。
+第二次不再带游戏工具，并且必须调用 `GenerateStructuredOutput`，因此台词写在
+工具结果之后。示例从 `message.structured_output` 读取 `reply`、`emotion` 和
+`affinity_delta`，把变化量限制在 -3 到 3，并写入 `save/game_state.json`。
+下一轮的系统提示会带上这个分数，因此关系会影响之后的措辞。
+
+任务奖励不是模型随意加减金币。Rowan 只有在玩家带着锻造锤时才能完成
+「失落的锤子」。游戏会收走锤子，并按 `town_config.json` 里的 8 枚金币
+发放一次。
 
 值得记住的事实（名字、职业、承诺）由 `AgenticMemoryMiddleware` 写到
 `save/memory/<npc_id>/Memory/`。重新启动进程就是下一次来访：对话原文不再
@@ -157,6 +162,6 @@ python -m pytest tests -q
 
 - `town_config.json` 中的三份人设，各自带可赠送物品
 - 用 AgentScope 2.x 的 `AgenticMemoryMiddleware` 做跨次访问记忆（本地 Markdown，无向量库）
-- 工具会更新 `game_state.json` 里的背包、金币和任务进度
+- 工具会更新 `game_state.json` 里的背包、收费和任务进度，奖励由代码发放
 - 每轮情绪与好感度来自结构化输出，下一轮写回系统提示
 - 提供方：DashScope（默认）、OpenAI 兼容接口、Ollama，以及离线 mock
