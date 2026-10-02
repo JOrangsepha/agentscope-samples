@@ -37,11 +37,7 @@ def load_entries(save_dir: str | Path) -> list[dict]:
 
 def prompt_block(save_dir: str | Path) -> str:
     """Public rumors for the system prompt. Empty towns say so."""
-    public = [
-        entry
-        for entry in load_entries(save_dir)
-        if entry.get("kind") in {"insult", "quest"}
-    ]
+    public = _public_entries(save_dir)
     if not public:
         return (
             "None yet. Insults and quest news become public. "
@@ -51,10 +47,9 @@ def prompt_block(save_dir: str | Path) -> str:
     joined = "\n".join(f"- {line}" for line in lines if line)
     return (
         f"{joined}\n"
-        "The name after Heard by is the witness. "
-        "When the player asks for news, name that witness and the "
-        "latest insult. Do not say a different resident reported it. "
-        "Do not invent a rumor or repeat private memory."
+        "Each line names who heard it. An insult was said by the "
+        "player, not by that resident. Do not invent a rumor or "
+        "repeat private memory."
     )
 
 
@@ -82,10 +77,7 @@ def record_public_events(
             source_id,
             source_name,
             "quest",
-            (
-                f"Heard by {source_name}: the player accepted "
-                "The Lost Hammer."
-            ),
+            (f"{source_name} heard the player accepted " "The Lost Hammer."),
         )
     elif quest_event == "completed":
         _append(
@@ -93,20 +85,13 @@ def record_public_events(
             source_id,
             source_name,
             "quest",
-            (
-                f"Heard by {source_name}: the player completed "
-                "The Lost Hammer."
-            ),
+            (f"{source_name} heard the player completed " "The Lost Hammer."),
         )
 
 
 def narrate_wait(save_dir: str | Path, config: TownConfig) -> str:
     """Mira (or Rowan) repeats the latest public rumor. No model call."""
-    public = [
-        entry
-        for entry in load_entries(save_dir)
-        if entry.get("kind") in {"insult", "quest"}
-    ]
+    public = _public_entries(save_dir)
     if not public:
         return "The square is quiet. No rumor has reached the inn."
     latest = public[-1]
@@ -138,22 +123,69 @@ def format_log(save_dir: str | Path) -> str:
     return "\n".join(lines)
 
 
+_NEWS_CUES = (
+    "gossip",
+    "rumor",
+    "rumour",
+    "what news",
+    "any news",
+    "latest news",
+    "heard about me",
+    "what do people",
+    "新鲜事",
+    "什么消息",
+    "传闻",
+    "闲话",
+)
+
+
+def asks_for_news(text: str) -> bool:
+    """True when this player line is asking what the town is saying."""
+    lowered = text.lower()
+    return any(cue in lowered for cue in _NEWS_CUES)
+
+
+def news_to_repeat(save_dir: str | Path, language: str) -> str:
+    """Facts the speak step must say. Empty when nobody asked or none exist."""
+    public = _public_entries(save_dir)
+    if not public:
+        return ""
+    chosen = [str(public[-1].get("text", "")).strip()]
+    insults = [entry for entry in public if entry.get("kind") == "insult"]
+    if insults:
+        insult = str(insults[-1].get("text", "")).strip()
+        if insult and insult not in chosen:
+            chosen.append(insult)
+    facts = " ".join(line for line in chosen if line)
+    if not facts:
+        return ""
+    if language == "Simplified Chinese":
+        return "玩家在打听消息。必须复述这些公开事实，并点名听见的人。" "侮辱是玩家说的，不是见证人说的：" f"{facts}"
+    return (
+        "The player asks for news. Repeat these public facts and "
+        "name who heard them. Any insult was said by the player, "
+        f"not by the witness: {facts}"
+    )
+
+
+def _public_entries(save_dir: str | Path) -> list[dict]:
+    return [
+        entry
+        for entry in load_entries(save_dir)
+        if entry.get("kind") in {"insult", "quest"}
+    ]
+
+
 def _insult_line(source_name: str, player_text: str) -> str:
     """One sentence. The period stays inside the quotation."""
     said = " ".join(player_text.split()).strip("'\"")
     said = said.rstrip(".!?。！？")
-    return (
-        f"Heard by {source_name}: " f"The player told {source_name}: '{said}.'"
-    )
+    return f'{source_name} heard the player say: "{said}."'
 
 
 def _wait_reply(listener_name: str, rumor: str) -> str:
     """Do not ask the subject of the rumor to spread it."""
-    about = (
-        f"Heard by {listener_name}" in rumor
-        or f"told {listener_name}" in rumor
-    )
-    if about:
+    if rumor.startswith(f"{listener_name} heard"):
         return f"{listener_name}: I was there."
     return f"{listener_name}: I'll remember that."
 

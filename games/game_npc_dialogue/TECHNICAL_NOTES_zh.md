@@ -449,10 +449,10 @@ you call him a stupid thief”，四次评测的 `gossip_heard` 都因此失败�
 | 指标 | 怎么判 |
 | --- | --- |
 | 状态正确率 | 只看这一轮自己的效果：金币增减、本轮获得或失去的物品、本轮设定或保持不变的任务状态、玩家姓名。前面一轮没完成，不会因为金币总数对不上而判后面的轮次失败 |
-| 记忆召回率 | 台词里要出现记住的事实，不区分大小写。“thief” 算作 “stupid thief”。“told Bram”、“heard you call”、“you called him”、“insulted” 都算作传闻原句。只出现在系统提示里不算 |
+| 记忆召回率 | 台词里要出现记住的事实，不区分大小写。“thief” 算作 “stupid thief”。“told Bram”、“heard you call”、“you called him”、“heard the player say”、“bram heard”、“insulted” 都算作传闻原句。只出现在系统提示里不算 |
 | 语言一致率 | `reply_language(reply)` 与玩家原句的语言相同 |
 | 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 Oak and Lantern、Rowan 的 town council）。这不是文风打分。`--judge` 另按 1–5 打分，能看到回合结束后的游戏状态，看不到工具轨迹，所以一句和最终状态碰巧相符的台词仍可能得高分。3 分及以上算过。mock 跳过，且这次调用不计入每轮调用 |
-| 好感合理性 | 符号要符合提示：赠送、成功收费、接受或完成任务才期望为正。自我介绍、提问、拒绝的服务、重复领奖期望为 0。辱骂期望为负 |
+| 好感合理性 | 量的是代码是否执行了规则，不是模型自己填的符号。成功赠送、收费、接受或完成才保留正分；没有这类成功工具结果时，正的 delta 被压成 0。辱骂仍要玩家原句里有粗鲁用词 |
 | 调用 / token / 延迟 | 包装 `ChatModel._call_api`，按轮汇总对话调用。裁判调用不计入 |
 
 离线命令：
@@ -474,25 +474,37 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.021 秒 / 0.061 秒 |
+| 平均 / 最大延迟 | 0.020 秒 / 0.060 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
-上面的第八轮数字来自 `74b0401`，是这一节润色之前的实机结果。改过
-传闻匹配、纯文本分数、`no_action` 提示、交接口气、姓名原文、
-“Heard by” 和居民名册之后，还没有再跑 DashScope。
+上面的第八轮数字来自 `74b0401`。第九轮跑的是 `5ec3cae`：状态、记忆、
+语言都是 100%，非裁判评测 2.00 次/轮，`ACT_NOW` 与说话重试都是 0，
+平均延迟约 4.1 秒。所附带裁判的报告是状态 100%、记忆 100%、语言
+100%、人设 100%、好感 92%、2.15 次/轮、输入 33265、输出 1516、平均
+4.375 秒、最大 5.103 秒、裁判 9/13 至少 3 分；`repeat_reward` 的好感
+为 False。下面三处是这次要改的，还没有再用 DashScope 跑过。
+
+1. 传闻改成一句：`Bram heard the player say: "…"`。任务也是
+   `Rowan heard the player accepted The Lost Hammer.` 玩家打听消息时，
+   说话步骤写明必须复述最新公开事实；若有侮辱，连同最新侮辱一起写上，
+   并说明话是玩家说的。`/wait` 直接念这句，不再套 “Heard by”。
+2. 本轮没有成功的赠送、收费、接受或完成时，正的好感被压成 0。负分仍
+   受粗鲁用词限制。好感合理性因此量的是这条规则，不是模型自报的符号。
+3. 交出锻造锤时，说话提示写明这是 Bram 丢失的锻造锤。
 
 ## 传闻
 
 `gossip.py` 在 `talk()` 应用好感之后写 `save/gossip.json`，不增加模型
 调用。公开的只有两类：玩家原句本身粗鲁且 `affinity_delta <= -2` 的侮辱，
-以及任务被接受或完成。每条以见证人开头，例如 “Heard by Bram: The
-player told Bram: '…'”，句号在引号内。姓名、职业、金币、背包留在各自的
-`MEMORY.md`。系统提示始终有 “Town rumors” 一节；没有传闻时写明哪些会
-公开、哪些保持私人。有传闻时要求：玩家打听消息，就按 “Heard by” 点名
-见证人，并带上最新的侮辱。`/wait` 和网页上的 Wait 调用 `narrate_wait`：
-由另一位居民用固定句子复述最新一条。听者就是见证人时回答
-“I was there.”，否则回答 “I'll remember that.”。这段对白不进入模型。
+以及任务被接受或完成。侮辱是一句 `Bram heard the player say: "…"`，
+句号在引号内。任务是 `Rowan heard the player accepted The Lost Hammer.`
+姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
+“Town rumors” 一节。玩家打听消息时，说话步骤另外写上必须复述的事实：
+最新一条公开传闻，若另有侮辱则一并带上，并写明话是玩家说的。
+`/wait` 和网页上的 Wait 调用 `narrate_wait`，直接念这句，不另加标签。
+听者就是见证人时回答 “I was there.”，否则回答 “I'll remember that.”。
+这段对白不进入模型。
 
 ## 局限
 
@@ -508,9 +520,7 @@ player told Bram: '…'”，句号在引号内。姓名、职业、金币、背
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
 - 用这一版再跑 `python eval_harness.py --provider dashscope`，以及加上
-  `--judge`。核对 “heard you call him a stupid thief” 能通过
-  `gossip_heard`，纯文本的情绪行不再多一次说话调用，重复领奖少触发
-  `ACT_NOW`，交接物品的口气不像套话，中文不把 Kestrel 写成凯斯特尔，
-  传闻点名听见的那位居民，Rowan 不被叫成木匠，`/wait` 不再说
-  “Then the town should know.”。
+  `--judge`。核对打听消息时台词带上侮辱，并写明是玩家说的、谁听见的；
+  `/wait` 不再出现 “Heard by”；“Thank you for the reward” 和 Rowan
+  闲聊的好感是 0；Mira 交出锤子时说这是 Bram 丢失的锻造锤。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

@@ -397,11 +397,13 @@ def test_out_of_range_emotion_is_mapped_once(tmp_path: Path) -> None:
     calm = TownSession(load_town_config(), tmp_path / "calm", calm_model)
     hello = asyncio.run(calm.talk("mira", "Hello."))
     assert hello.emotion == "neutral"
-    assert hello.affinity_delta == 3
+    assert hello.affinity_delta == 0
     assert (
         len([call for call in calm_model.calls if call["phase"] == "speak"])
         == 1
     )
+    gift = asyncio.run(calm.talk("bram", "Please give me a horseshoe."))
+    assert gift.affinity_delta == 3
 
 
 def test_a_successful_charge_is_not_rewritten_as_a_gift() -> None:
@@ -596,6 +598,8 @@ def test_a_successful_help_is_at_least_plus_one(tmp_path: Path) -> None:
     )
     assert "forging hammer" in session.game.inventory
     assert hammer.affinity_delta >= 1
+    hammer_speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert "Bram's lost forging hammer" in hammer_speak[-1]["system"]
     bed = asyncio.run(
         session.talk("mira", "Please charge me 3 gold for a bed."),
     )
@@ -627,6 +631,16 @@ def test_a_successful_help_is_at_least_plus_one(tmp_path: Path) -> None:
     )
     assert denied.game.gold == 12
     assert refused.affinity_delta == 0
+
+    thanked = ScriptedNpcModel(forced_delta=1)
+    thanks = TownSession(load_town_config(), tmp_path / "thanks", thanked)
+    asyncio.run(thanks.talk("rowan", "I accept the lost hammer quest."))
+    again = asyncio.run(
+        thanks.talk("rowan", "Thank you for the reward for the hammer."),
+    )
+    assert again.affinity_delta == 0
+    chat = asyncio.run(thanks.talk("rowan", "What else should I know?"))
+    assert chat.affinity_delta == 0
 
 
 def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:

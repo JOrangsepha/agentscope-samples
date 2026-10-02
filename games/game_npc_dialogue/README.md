@@ -207,11 +207,13 @@ It is skipped for `--provider mock` and is not part of the two-call
 dialogue budget. The report states what each metric measures. State is
 this turn's own effect. Memory recall matches the spoken reply without
 case: "thief" counts for "stupid thief". "told Bram", "heard you call",
-"you called him", and "insulted" count for the gossip sentence. Persona
+"you called him", "heard the player say", and "insulted" count for the
+gossip sentence. Persona
 checks that the reply does not use another resident's marker. Affinity
 is positive only after a gift, a successful
-charge, or a quest accept or complete; the session raises a successful
-one of those to at least +1. Mock token counts stay 0.
+charge, or a quest accept or complete. The session raises a successful
+one of those to at least +1, and clamps any other positive delta to 0.
+Mock token counts stay 0.
 
 ### Web demo
 

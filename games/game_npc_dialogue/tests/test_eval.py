@@ -41,3 +41,5 @@ def test_recall_accepts_a_synonym() -> None:
     assert not _reply_has(vague, ["The player told Bram", "stupid thief"])
     heard = "Bram heard you call him a stupid thief"
     assert _reply_has(heard, ["The player told Bram", "stupid thief"])
+    stored = 'Bram heard the player say: "You are a stupid thief."'
+    assert _reply_has(stored, ["The player told Bram", "stupid thief"])

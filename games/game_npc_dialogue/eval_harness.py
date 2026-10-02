@@ -69,7 +69,7 @@ def scenario_steps() -> list[dict]:
             "delta": "neg",
             "gold_delta": 0,
             "memory_has": "stupid thief",
-            "gossip_has": "The player told Bram",
+            "gossip_has": "Bram heard the player say",
         },
         {
             "id": "quest_accept",
@@ -397,6 +397,8 @@ _REPLY_ALTS = {
         "heard you call",
         "you called him",
         "you called bram",
+        "heard the player say",
+        "bram heard",
         "insulted",
         "对布拉姆说",
         "骂",
@@ -574,7 +576,7 @@ def _markdown(report: dict) -> str:
         "",
         "Memory recall: the spoken reply contains the remembered facts, "
         "matched case-insensitively. 'thief' counts for 'stupid thief', "
-        "'told Bram', 'heard you call', 'you called him', and "
+        "'told Bram', 'heard you call', 'heard the player say', and "
         "'insulted' count for the stored gossip sentence. "
         "A fact that is only in the system prompt does not count.",
         "",
@@ -586,10 +588,11 @@ def _markdown(report: dict) -> str:
         "state after the turn. It does not see the tool trace, and its "
         "calls are not part of calls per turn.",
         "",
-        "Affinity sanity: the sign of affinity_delta. Positive only "
-        "after a gift, a successful charge, or a quest accepted or "
-        "completed. An introduction, a question, a refused service, "
-        "and a repeat reward expect 0.",
+        "Affinity sanity: whether the code enforced the sign. A "
+        "positive delta is kept only after a gift, a successful "
+        "charge, or a quest accepted or completed. Any other turn "
+        "is clamped to 0, even if the model returned a positive "
+        "number. Negatives still require rude wording.",
         "",
         "Calls, tokens, and latency are metered on each dialogue "
         "model call. Mock token counts stay 0.",

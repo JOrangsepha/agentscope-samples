@@ -14,7 +14,7 @@ from session import TownSession
 def test_affinity_and_emotion_persist_and_change_the_next_reply(
     tmp_path: Path,
 ) -> None:
-    """A polite turn raises affinity; the next visit greets more warmly."""
+    """A real gift raises affinity; the next visit greets more warmly."""
     config = load_town_config()
     session = TownSession(config, tmp_path, ScriptedNpcModel())
     greeting = asyncio.run(session.talk("bram", "Hello."))
@@ -22,23 +22,22 @@ def test_affinity_and_emotion_persist_and_change_the_next_reply(
     assert greeting.affinity == 0
     assert greeting.reply == "The forge is hot. Speak plainly."
 
-    polite = asyncio.run(session.talk("bram", "Thank you for your help."))
-    assert polite.emotion == "grateful"
-    assert polite.affinity_delta == 2
-    assert polite.affinity == 2
-    assert "courtesy" in polite.reply
+    shoe = asyncio.run(session.talk("bram", "Please give me a horseshoe."))
+    assert shoe.affinity_delta >= 1
+    nail = asyncio.run(session.talk("bram", "Please give me an iron nail."))
+    assert nail.emotion == "warm"
+    assert nail.affinity_delta >= 1
+    assert session.game.affinity("bram") == 2
 
     reloaded = GameState(tmp_path / "game_state.json", config)
     assert reloaded.affinity("bram") == 2
-    assert reloaded.emotion("bram") == "grateful"
+    assert reloaded.emotion("bram") == "warm"
 
     later_model = ScriptedNpcModel()
     later = TownSession(config, tmp_path, later_model)
     again = asyncio.run(later.talk("bram", "Hello."))
     assert "Affinity: 2" in later_model.calls[0]["system"]
-    assert (
-        "Last emotion you showed: grateful" in later_model.calls[0]["system"]
-    )
+    assert "Last emotion you showed: warm" in later_model.calls[0]["system"]
     assert again.reply == "It is good to see you again."
     assert again.emotion == "happy"
 

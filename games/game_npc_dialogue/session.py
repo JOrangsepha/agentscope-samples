@@ -16,7 +16,13 @@ from agentscope.state import AgentState
 from agentscope.tool import Toolkit
 
 from game_state import GameState
-from gossip import narrate_wait, prompt_block, record_public_events
+from gossip import (
+    asks_for_news,
+    narrate_wait,
+    news_to_repeat,
+    prompt_block,
+    record_public_events,
+)
 from memory_store import remember_fact
 from npc_config import TownConfig
 from prompts import (
@@ -135,6 +141,9 @@ class TownSession:
         _drop_action_prose(state, player_text)
         paid = _payment(state, player_text)
         granted = _new_items(before_items, self.game.inventory)
+        news_note = ""
+        if asks_for_news(player_text):
+            news_note = news_to_repeat(self.save_dir, language)
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
@@ -142,11 +151,12 @@ class TownSession:
             language=language,
             paid_note=_paid_note(paid),
             granted_note=_granted_note(granted, language),
+            news_note=news_note,
         )
         message = await speaker.reply(
             UserMsg(
                 name="director",
-                content=_speak_cue(player_text, language),
+                content=_speak_cue(player_text, language, news_note),
             ),
             structured_schema=NpcTurn,
         )
@@ -155,7 +165,7 @@ class TownSession:
                 UserMsg(
                     name="director",
                     content=(
-                        f"{_speak_cue(player_text, language)}\n"
+                        f"{_speak_cue(player_text, language, news_note)}\n"
                         "The previous reply was not Simplified Chinese. "
                         "Reply in Simplified Chinese only."
                     ),
@@ -201,6 +211,7 @@ class TownSession:
         language: str = "",
         paid_note: str = "",
         granted_note: str = "",
+        news_note: str = "",
     ) -> Agent:
         state = self._agent_states.setdefault(npc_id, AgentState())
         state.permission_context.mode = PermissionMode.BYPASS
@@ -230,6 +241,7 @@ class TownSession:
                 language=language,
                 paid_note=paid_note,
                 granted_note=granted_note,
+                news_note=news_note,
             ),
             model=self.model,
             toolkit=toolkit,
@@ -248,6 +260,7 @@ class TownSession:
         language: str = "",
         paid_note: str = "",
         granted_note: str = "",
+        news_note: str = "",
     ) -> str:
         npc = self.config.npc(npc_id)
         return build_system_prompt(
@@ -266,6 +279,7 @@ class TownSession:
             hammer_place=self.game.hammer_place(),
             paid_note=paid_note,
             granted_note=granted_note,
+            news_note=news_note,
             rumors=prompt_block(self.save_dir),
         )
 
@@ -334,13 +348,33 @@ def _granted_note(items: list[str], language: str) -> str:
     if not items:
         return ""
     if language == "Simplified Chinese":
-        names = "、".join(_ITEM_ZH.get(item, item) for item in items)
+        names = _handed_names_zh(items)
         return f"你现在把{names}交给玩家。用你自己的口气说出来。" "不要说他们本来就有。"
-    names = ", ".join(items)
+    names = _handed_names_en(items)
     return (
         f"You are handing the player {names} now. "
         "Say so in your own voice. Do not say they already had it."
     )
+
+
+def _handed_names_en(items: list[str]) -> str:
+    shown = []
+    for item in items:
+        if item == "forging hammer":
+            shown.append("Bram's lost forging hammer")
+        else:
+            shown.append(item)
+    return ", ".join(shown)
+
+
+def _handed_names_zh(items: list[str]) -> str:
+    shown = []
+    for item in items:
+        if item == "forging hammer":
+            shown.append("Bram 丢失的锻造锤")
+        else:
+            shown.append(_ITEM_ZH.get(item, item))
+    return "、".join(shown)
 
 
 def _paid_note(paid: tuple[int, str] | None) -> str:
@@ -388,12 +422,14 @@ def _structured_reply(message) -> str:
     return message.get_text_content() or ""
 
 
-def _speak_cue(player_text: str, language: str) -> str:
+def _speak_cue(player_text: str, language: str, news_note: str = "") -> str:
     """Turn-local instruction. It is removed from history after the reply."""
+    news = f"\n{news_note}" if news_note else ""
     return (
         f"{SPEAK_CUE}\n"
         f"{language_banner(language, items=False)}\n"
         f"The player said: {player_text}"
+        f"{news}"
     )
 
 
@@ -452,8 +488,11 @@ def _apply_turn(
         charged,
         language,
     )
-    if _helped(granted, paid, quest_event) and delta < 1:
+    helped = _helped(granted, paid, quest_event)
+    if helped and delta < 1:
         delta = 1
+    elif not helped and delta > 0:
+        delta = 0
     affinity = game.apply_affinity(npc_id, delta)
     game.set_emotion(npc_id, emotion)
     if abs(delta) >= _NOTABLE_DELTA:

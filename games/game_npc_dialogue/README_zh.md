@@ -191,9 +191,11 @@ python eval_harness.py --provider dashscope --out eval_reports
 后的游戏状态，看不到工具轨迹。`--provider mock` 会跳过它，也不计入
 两次对话预算。报告写明每个指标量什么。状态只看这一轮自己的效果。
 记忆召回不区分大小写：“thief” 算作 “stupid thief”。“told Bram”、
-“heard you call”、“you called him”、“insulted” 都算作传闻原句。
+“heard you call”、“you called him”、“heard the player say”、“insulted”
+都算作传闻原句。
 人设检查台词没有串用别人的标记。只有赠送、成功收费、接受或
-完成任务才期望好感上升；这类成功由代码至少记成 +1。脚本模型不报告
+完成任务才期望好感上升。这类成功由代码至少记成 +1；没有这类成功时，
+正的好感被压成 0。脚本模型不报告
 用量，token 是 0。
 
 ### 网页演示
