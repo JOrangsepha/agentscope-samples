@@ -2,12 +2,13 @@
 """One visit to Millhaven: talk to NPCs and keep the save on disk."""
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
-from agentscope.message import TextBlock, UserMsg
+from agentscope.message import TextBlock, ToolCallBlock, UserMsg
 from agentscope.middleware import AgenticMemoryMiddleware, MiddlewareBase
 from agentscope.model import ChatModelBase, ChatResponse
 from agentscope.permission import PermissionMode
@@ -18,7 +19,11 @@ from game_state import GameState
 from gossip import narrate_wait, prompt_block, record_public_events
 from memory_store import remember_fact
 from npc_config import TownConfig
-from prompts import NPC_MEMORY_INSTRUCTIONS, build_system_prompt
+from prompts import (
+    NPC_MEMORY_INSTRUCTIONS,
+    build_system_prompt,
+    language_banner,
+)
 from schema import NpcTurn
 from speech import (
     ACT_CUE,
@@ -29,6 +34,7 @@ from speech import (
     guard_unproven_transfer,
     learn_player_name,
     normalize_emotion,
+    plausible_rudeness,
     polite_question,
     polish_reply,
     reply_language,
@@ -128,12 +134,14 @@ class TownSession:
             await actor.reply(UserMsg(name="director", content=_act_cue()))
         _drop_action_prose(state, player_text)
         paid = _payment(state, player_text)
+        granted = _new_items(before_items, self.game.inventory)
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
             player_text=player_text,
             language=language,
             paid_note=_paid_note(paid),
+            granted_note=_granted_note(granted, language),
         )
         message = await speaker.reply(
             UserMsg(
@@ -163,10 +171,11 @@ class TownSession:
             self.memory_dir(npc_id),
             language,
             self.game.stock(npc_id),
-            _new_items(before_items, self.game.inventory),
+            granted,
             self.game.gold < before_gold,
             _quest_failed(state, player_text),
             paid,
+            _public_quest_event(state, player_text),
         )
         record_public_events(
             self.save_dir,
@@ -191,6 +200,7 @@ class TownSession:
         player_text: str = "",
         language: str = "",
         paid_note: str = "",
+        granted_note: str = "",
     ) -> Agent:
         state = self._agent_states.setdefault(npc_id, AgentState())
         state.permission_context.mode = PermissionMode.BYPASS
@@ -209,6 +219,7 @@ class TownSession:
             limit = 8
         else:
             toolkit = Toolkit()
+            middlewares.append(StructuredTextMiddleware())
             limit = 4
         return Agent(
             name=self.config.npc(npc_id).name,
@@ -218,6 +229,7 @@ class TownSession:
                 player_text=player_text,
                 language=language,
                 paid_note=paid_note,
+                granted_note=granted_note,
             ),
             model=self.model,
             toolkit=toolkit,
@@ -235,6 +247,7 @@ class TownSession:
         player_text: str = "",
         language: str = "",
         paid_note: str = "",
+        granted_note: str = "",
     ) -> str:
         npc = self.config.npc(npc_id)
         return build_system_prompt(
@@ -252,6 +265,7 @@ class TownSession:
             hammer_status=_hammer_status(self.game),
             hammer_place=self.game.hammer_place(),
             paid_note=paid_note,
+            granted_note=granted_note,
             rumors=prompt_block(self.save_dir),
         )
 
@@ -282,6 +296,16 @@ class ActionStopMiddleware(MiddlewareBase):
         return await next_handler(**input_kwargs)
 
 
+class StructuredTextMiddleware(MiddlewareBase):
+    """Turn a written GenerateStructuredOutput(...) into a real tool call."""
+
+    async def on_model_call(self, agent, input_kwargs, next_handler):
+        """Parse a text-shaped tool call so the agent does not ask again."""
+        del agent
+        response = await next_handler(**input_kwargs)
+        return _promote_structured_text(response)
+
+
 def _act_cue() -> str:
     """One retry when the action step returned no game tool."""
     return (
@@ -294,6 +318,30 @@ def _act_cue() -> str:
 def _hammer_status(game: GameState) -> str:
     quest = game.data.get("quests", {}).get("lost_hammer", {})
     return str(quest.get("status") or "available")
+
+
+_ITEM_ZH = {
+    "forging hammer": "锻造锤",
+    "horseshoe": "马掌",
+    "iron nail": "铁钉",
+    "brown loaf": "黑面包",
+    "worn cloak": "旧斗篷",
+}
+
+
+def _granted_note(items: list[str], language: str) -> str:
+    """Tell the speaker which items this turn actually handed over."""
+    if not items:
+        return ""
+    if language == "Simplified Chinese":
+        names = "、".join(_ITEM_ZH.get(item, item) for item in items)
+        return f"本轮你刚刚交给玩家：{names}。" "要说是你刚才交给他们的。不要说他们本来就有。"
+    names = ", ".join(items)
+    return (
+        f"This turn you just gave the player: {names}. "
+        "Say that you handed it over just now. "
+        "Do not say they already had it."
+    )
 
 
 def _paid_note(paid: tuple[int, str] | None) -> str:
@@ -345,8 +393,8 @@ def _speak_cue(player_text: str, language: str) -> str:
     """Turn-local instruction. It is removed from history after the reply."""
     return (
         f"{SPEAK_CUE}\n"
+        f"{language_banner(language)}\n"
         f"The player said: {player_text}\n"
-        f"Reply in {language}. "
         "One or two sentences, no stage directions. "
         "Mention a gift or a payment only if a tool result this turn "
         "says it succeeded."
@@ -366,6 +414,7 @@ def _apply_turn(
     charged: bool,
     quest_failed: bool,
     paid: tuple[int, str] | None,
+    quest_event: str,
 ) -> TurnResult:
     """Read structured output and write emotion plus affinity."""
     payload = message.structured_output or {}
@@ -385,6 +434,8 @@ def _apply_turn(
     except (TypeError, ValueError):
         delta = 0
     delta = max(_DELTA_MIN, min(_DELTA_MAX, delta))
+    if delta <= -2 and not plausible_rudeness(player_text):
+        delta = 0
     if quest_failed and delta > 0:
         delta = 0
     if delta < 0 and polite_question(player_text):
@@ -396,6 +447,7 @@ def _apply_turn(
         amount, reason_paid = paid
         game.adjust_gold(amount, f"refund {reason_paid}")
         charged = False
+        paid = None
         reply = REFUND_ZH if language == "Simplified Chinese" else REFUND_EN
     reply = guard_unproven_transfer(
         reply,
@@ -404,6 +456,8 @@ def _apply_turn(
         charged,
         language,
     )
+    if _helped(granted, paid, quest_event) and delta < 1:
+        delta = 1
     affinity = game.apply_affinity(npc_id, delta)
     game.set_emotion(npc_id, emotion)
     if abs(delta) >= _NOTABLE_DELTA:
@@ -422,6 +476,151 @@ def _apply_turn(
         affinity=affinity,
         affinity_reason=reason,
     )
+
+
+def _helped(
+    granted: list[str],
+    paid: tuple[int, str] | None,
+    quest_event: str,
+) -> bool:
+    """True when this turn gave an item, took coins, or moved the quest."""
+    if granted or paid is not None:
+        return True
+    return quest_event in {"accepted", "completed"}
+
+
+def _promote_structured_text(response: ChatResponse) -> ChatResponse:
+    """Replace a written structured call with a tool call block."""
+    content = getattr(response, "content", None) or []
+    if not isinstance(content, list):
+        return response
+    if any(
+        getattr(block, "name", None) == "GenerateStructuredOutput"
+        for block in content
+    ):
+        return response
+    text = "\n".join(
+        getattr(block, "text", "")
+        for block in content
+        if getattr(block, "text", "")
+    )
+    parsed = _parse_structured_call(text)
+    if parsed is None:
+        return response
+    response.content = [
+        ToolCallBlock(
+            id="structured-from-text",
+            name="GenerateStructuredOutput",
+            input=json.dumps(parsed),
+        ),
+    ]
+    return response
+
+
+def _parse_structured_call(text: str) -> dict | None:
+    """Read reply, emotion, delta, and reason from a text-shaped call."""
+    marker = "GenerateStructuredOutput"
+    start = text.find(marker)
+    if start < 0:
+        return None
+    body = text[start + len(marker) :].lstrip()
+    if not body.startswith("("):
+        return None
+    body = body[1:]
+    if body.lstrip().startswith("{"):
+        return _parse_structured_json(body)
+    return _parse_structured_kwargs(body)
+
+
+def _parse_structured_json(body: str) -> dict | None:
+    raw = body.lstrip()
+    end = _matching_brace(raw)
+    if end is None:
+        return None
+    try:
+        payload = json.loads(raw[: end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or "reply" not in payload:
+        return None
+    return _normalize_structured(payload)
+
+
+def _matching_brace(text: str) -> int | None:
+    depth = 0
+    quote = ""
+    escaped = False
+    for index, char in enumerate(text):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in "\"'":
+            quote = char
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _parse_structured_kwargs(body: str) -> dict | None:
+    fields: dict = {}
+    index = 0
+    while index < len(body):
+        while index < len(body) and body[index] in " \n\t,":
+            index += 1
+        if index >= len(body) or body[index] == ")":
+            break
+        match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*", body[index:])
+        if match is None:
+            return None
+        key = match.group(1)
+        index += match.end()
+        if index < len(body) and body[index] in "\"'":
+            quote = body[index]
+            index += 1
+            chars: list[str] = []
+            while index < len(body):
+                if body[index] == "\\" and index + 1 < len(body):
+                    chars.append(body[index + 1])
+                    index += 2
+                    continue
+                if body[index] == quote:
+                    index += 1
+                    break
+                chars.append(body[index])
+                index += 1
+            fields[key] = "".join(chars)
+            continue
+        number = re.match(r"-?\d+", body[index:])
+        if number is None:
+            return None
+        fields[key] = int(number.group(0))
+        index += number.end()
+    if "reply" not in fields:
+        return None
+    return _normalize_structured(fields)
+
+
+def _normalize_structured(payload: dict) -> dict:
+    try:
+        delta = int(payload.get("affinity_delta", 0))
+    except (TypeError, ValueError):
+        delta = 0
+    return {
+        "reply": str(payload.get("reply", "")),
+        "emotion": str(payload.get("emotion", "neutral")),
+        "affinity_delta": delta,
+        "affinity_reason": str(payload.get("affinity_reason", "")),
+    }
 
 
 def _public_quest_event(state: AgentState, player_text: str) -> str:

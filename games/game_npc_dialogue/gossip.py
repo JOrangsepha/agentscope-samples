@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from npc_config import TownConfig
+from speech import plausible_rudeness
 
 _FILE = "gossip.json"
 
@@ -52,9 +53,10 @@ def prompt_block(save_dir: str | Path) -> str:
         f"{joined}\n"
         "Each line is what the player told that resident, or a quest "
         "event. It is not that resident insulting the player. "
-        "When the player asks for news or what people say, share the "
-        "relevant lines. Do not invent a rumor, and do not repeat "
-        "private memory."
+        "When the player asks for news, share every relevant line, "
+        "especially the latest insult. Say who the player told, using "
+        "the words of that line. Do not hide the speaker or the insult. "
+        "Do not invent a rumor, and do not repeat private memory."
     )
 
 
@@ -68,14 +70,13 @@ def record_public_events(
     quest_event: str,
 ) -> None:
     """Append an insult or quest rumor when this turn produced one."""
-    if delta <= -2:
-        said = " ".join(player_text.split())
+    if delta <= -2 and plausible_rudeness(player_text):
         _append(
             save_dir,
             source_id,
             source_name,
             "insult",
-            f"The player told {source_name}: '{said}'.",
+            _insult_line(source_name, player_text),
         )
     if quest_event == "accepted":
         _append(
@@ -134,6 +135,13 @@ def format_log(save_dir: str | Path) -> str:
         kind = entry.get("kind", "rumor")
         lines.append(f"[{kind}] {entry.get('text', '')}")
     return "\n".join(lines)
+
+
+def _insult_line(source_name: str, player_text: str) -> str:
+    """One sentence. The period stays inside the quotation."""
+    said = " ".join(player_text.split()).strip("'\"")
+    said = said.rstrip(".!?。！？")
+    return f"The player told {source_name}: '{said}.'"
 
 
 def _append(

@@ -105,6 +105,12 @@ def learn_player_name(text: str) -> str | None:
     return _chinese_name(text)
 
 
+def plausible_rudeness(text: str) -> bool:
+    """True when the player's line itself looks like an insult."""
+    lowered = text.lower()
+    return any(word in lowered for word in _INSULTS)
+
+
 def polite_question(text: str) -> bool:
     """True for a question that does not insult the NPC."""
     stripped = text.strip()

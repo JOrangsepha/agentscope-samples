@@ -15,8 +15,8 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
     asyncio.run(session.talk("bram", "You are a stupid thief."))
     gossip = (tmp_path / "gossip.json").read_text(encoding="utf-8")
-    assert "The player told Bram:" in gossip
-    assert "stupid thief" in gossip
+    assert "The player told Bram: 'You are a stupid thief.'" in gossip
+    assert "'.'." not in gossip
     assert "finds the player rude" not in gossip
     assert "traveling" not in gossip
 
@@ -51,6 +51,14 @@ def test_quest_news_is_public_and_wait_is_quiet_at_first(
         ScriptedNpcModel(),
     )
     assert "quiet" in quiet.wait_in_town()
+    greeted = TownSession(
+        load_town_config(),
+        tmp_path / "hello",
+        ScriptedNpcModel(forced_emotion="annoyed", forced_delta=-3),
+    )
+    hello = asyncio.run(greeted.talk("bram", "Hello."))
+    assert hello.affinity_delta == 0
+    assert not (tmp_path / "hello" / "gossip.json").exists()
 
     session = TownSession(
         load_town_config(),

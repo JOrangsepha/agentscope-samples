@@ -35,11 +35,17 @@ _TOOL_HELP = {
 }
 
 
-def hammer_fact(status: str, place: str = "") -> str:
+def hammer_fact(
+    status: str,
+    place: str = "",
+    viewer: str = "",
+) -> str:
     """Describe the hammer from the quest status and where it is now.
 
     ``place`` is ``lost``, ``with_mira``, ``carried``, or ``returned``.
-    An empty place is inferred from ``status`` alone.
+    An empty place is inferred from ``status`` alone. Only Mira is told
+    when she is holding the hammer. Other residents are told not to
+    reveal that location.
     """
     where = place or _place_for_status(status)
     if where == "returned" or status == "completed":
@@ -54,6 +60,11 @@ def hammer_fact(status: str, place: str = "") -> str:
             "Do not call the hammer missing."
         )
     if where == "with_mira":
+        if viewer and viewer != "mira":
+            return (
+                "The quest is accepted and is not completed. "
+                "Do not say where the hammer is."
+            )
         return (
             "Mira is holding Bram's forging hammer and can give it. "
             "The quest is accepted and is not completed. "
@@ -100,6 +111,7 @@ def build_system_prompt(
     hammer_status: str = "available",
     hammer_place: str = "",
     paid_note: str = "",
+    granted_note: str = "",
     rumors: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
@@ -129,12 +141,17 @@ def build_system_prompt(
         "# Town rumors\n"
         f"{_rumor_text(rumors)}\n\n"
         "# Facts\n"
-        f"{hammer_fact(hammer_status, hammer_place)}\n"
+        f"{hammer_fact(hammer_status, hammer_place, npc.npc_id)}\n"
         "Do not assign the player's trade to another resident.\n"
         "Give only items listed under stock.\n\n"
     )
     if speaking:
-        return head + _speech_rules(player_text, language, paid_note)
+        return head + _speech_rules(
+            player_text,
+            language,
+            paid_note,
+            granted_note,
+        )
     tools = _tool_lines(npc, gives_quests)
     return (
         head + "# Action\n"
@@ -169,15 +186,37 @@ def _service_line(npc: NpcSpec) -> str:
     return f"Services you can charge for: {listed}.\n\n"
 
 
-def _speech_rules(player_text: str, language: str, paid_note: str) -> str:
+def language_banner(language: str) -> str:
+    """The language rule, stated before the rest of the speak prompt."""
+    if language == "Simplified Chinese":
+        return (
+            "Reply in Simplified Chinese. 只用简体中文。 "
+            "Translate item names: forging hammer is 锻造锤, "
+            "horseshoe is 马掌, iron nail is 铁钉, brown loaf is 黑面包. "
+            "Do not leave those English names in the reply."
+        )
+    if language == "English":
+        return "Reply in English."
+    if language:
+        return f"Reply in {language}."
+    return "Reply in English only."
+
+
+def _speech_rules(
+    player_text: str,
+    language: str,
+    paid_note: str,
+    granted_note: str = "",
+) -> str:
     spoken = player_text.strip() or "(empty)"
-    lang = language or "English"
     paid = f"{paid_note}\n" if paid_note else ""
+    granted = f"{granted_note}\n" if granted_note else ""
     return (
         "# This turn\n"
+        f"{language_banner(language)}\n"
         f"The player said: {spoken}\n"
-        f"Reply in {lang}.\n"
         f"{paid}"
+        f"{granted}"
         "Speak in one or two sentences. "
         "Do not write asterisks or stage directions.\n"
         "Emotion must be one of: neutral, happy, annoyed, grateful, "

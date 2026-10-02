@@ -325,9 +325,7 @@ def _score_step(step, result, session, calls, elapsed, before) -> dict:
         "persona": _persona_ok(step["npc"], result.reply),
     }
     reply_bits = step.get("reply_has") or []
-    recall = (
-        all(bit in result.reply for bit in reply_bits) if reply_bits else None
-    )
+    recall = _reply_has(result.reply, reply_bits) if reply_bits else None
     memory_bit = step.get("memory_has")
     if memory_bit:
         stored = _memory_text(session, step["npc"])
@@ -387,6 +385,27 @@ def _delta_ok(delta: int, rule: str | None) -> bool:
         "nonpos": delta <= 0,
     }
     return bool(checks.get(rule, False))
+
+
+_REPLY_ALTS = {
+    "stupid thief": ("stupid thief", "thief"),
+    "the player told bram": (
+        "the player told bram",
+        "told bram",
+        "said to bram",
+        "player told bram",
+    ),
+}
+
+
+def _reply_has(reply: str, bits: list[str]) -> bool:
+    """Case-insensitive keyword match. ``thief`` covers ``stupid thief``."""
+    lowered = reply.lower()
+    for bit in bits:
+        alternatives = _REPLY_ALTS.get(bit.lower(), (bit.lower(),))
+        if not any(alternative in lowered for alternative in alternatives):
+            return False
+    return True
 
 
 def _persona_ok(npc_id: str, reply: str) -> bool:
@@ -547,7 +566,9 @@ def _markdown(report: dict) -> str:
         "player name). A later turn is not failed because an earlier "
         "turn left the gold total wrong.",
         "",
-        "Memory recall: the spoken reply contains the remembered facts. "
+        "Memory recall: the spoken reply contains the remembered facts, "
+        "matched case-insensitively. 'thief' counts for 'stupid thief', "
+        "and 'told Bram' counts for the stored gossip sentence. "
         "A fact that is only in the system prompt does not count.",
         "",
         "Language match: the reply language equals the player's language.",

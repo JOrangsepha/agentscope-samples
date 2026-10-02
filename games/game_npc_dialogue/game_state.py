@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 from npc_config import QuestSpec, TownConfig
-from prompts import hammer_fact
 
 _AFFINITY_MIN = -100
 _AFFINITY_MAX = 100
@@ -247,11 +246,6 @@ class GameState:
             "Quests:",
         ]
         lines.extend(self._quest_lines())
-        status = str(
-            self.data.get("quests", {}).get("lost_hammer", {}).get("status")
-            or "available",
-        )
-        lines.append(hammer_fact(status, self.hammer_place()))
         return "\n".join(lines)
 
     def describe_for_player(self) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from eval_harness import run_eval, write_reports
+from eval_harness import _reply_has, run_eval, write_reports
 from mock_model import ScriptedNpcModel
 
 
@@ -29,3 +29,13 @@ def test_offline_eval_meets_the_dialogue_budget(tmp_path: Path) -> None:
     assert "What each metric measures" in report_text
     assert "spoken reply contains the remembered facts" in report_text
     assert json_path.exists()
+
+
+def test_recall_accepts_a_synonym() -> None:
+    """'thief' and 'told Bram' satisfy the stored fact strings."""
+    remembered = "You called me a thief. I remember both, Kestrel."
+    assert _reply_has(remembered, ["Kestrel", "stupid thief"])
+    heard = "You told Bram he was a thief."
+    assert _reply_has(heard, ["The player told Bram", "stupid thief"])
+    vague = "I told Bram you were rude."
+    assert not _reply_has(vague, ["The player told Bram", "stupid thief"])

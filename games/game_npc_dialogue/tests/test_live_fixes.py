@@ -9,7 +9,13 @@ from game_state import GameState
 from mock_model import ScriptedNpcModel
 from npc_config import load_town_config
 from prompts import build_system_prompt, hammer_fact
-from session import TownSession
+from agentscope.message import TextBlock, ToolCallBlock
+from agentscope.model import ChatResponse
+from session import (  # pylint: disable=protected-access
+    TownSession,
+    _parse_structured_call,
+    _promote_structured_text,
+)
 from speech import (
     ACT_CUE,
     CHARGED_EN,
@@ -142,6 +148,8 @@ def test_language_is_chosen_from_the_player_line() -> None:
         language="Simplified Chinese",
     )
     assert "Reply in Simplified Chinese." in chinese
+    assert "只用简体中文" in chinese
+    assert "锻造锤" in chinese
     assert "The player said: 你好米拉" in chinese
     assert "only for rudeness, threats, or a broken promise" in chinese
     assert "changes affinity by 0" in chinese
@@ -486,6 +494,11 @@ def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
     assert "polite question is never rudeness" in model.calls[0]["system"]
     asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
     model.calls.clear()
+    asyncio.run(session.talk("rowan", "Hello."))
+    hidden = model.calls[0]["system"]
+    assert "Mira is holding" not in hidden
+    assert "Do not say where the hammer is" in hidden
+    model.calls.clear()
     asyncio.run(session.talk("mira", "Hello."))
     held = model.calls[0]["system"]
     assert "Mira is holding" in held
@@ -556,6 +569,143 @@ def test_chinese_reply_is_regenerated_once(tmp_path: Path) -> None:
     speak = [call for call in model.calls if call["phase"] == "speak"]
     assert len(speak) == 2
     assert "Reply in Simplified Chinese." in speak[1]["system"]
+
+
+def test_a_successful_help_is_at_least_plus_one(tmp_path: Path) -> None:
+    """A gift, quest, or charge is +1 even when the model says 0."""
+    model = ScriptedNpcModel(forced_delta=0)
+    session = TownSession(load_town_config(), tmp_path, model)
+    accepted = asyncio.run(
+        session.talk("rowan", "I accept the lost hammer quest."),
+    )
+    assert accepted.affinity_delta >= 1
+    gift = asyncio.run(session.talk("bram", "Please give me a horseshoe."))
+    assert "horseshoe" in session.game.inventory
+    assert gift.affinity_delta >= 1
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert "just gave" in speak[-1]["system"]
+    assert "horseshoe" in speak[-1]["system"]
+    assert "already had" in speak[-1]["system"]
+    hammer = asyncio.run(
+        session.talk("mira", "Please give me a forging hammer."),
+    )
+    assert "forging hammer" in session.game.inventory
+    assert hammer.affinity_delta >= 1
+    bed = asyncio.run(
+        session.talk("mira", "Please charge me 3 gold for a bed."),
+    )
+    assert session.game.gold == 9
+    assert bed.affinity_delta >= 1
+
+    chinese_model = ScriptedNpcModel(forced_delta=0)
+    chinese = TownSession(
+        load_town_config(),
+        tmp_path / "zh",
+        chinese_model,
+    )
+    asyncio.run(chinese.talk("bram", "请给我 horseshoe"))
+    zh_speak = [
+        call for call in chinese_model.calls if call["phase"] == "speak"
+    ]
+    note = zh_speak[-1]["system"]
+    assert "本轮你刚刚交给玩家：马掌" in note
+    assert "不要说他们本来就有" in note
+    assert "锻造锤" in note
+
+    denied_model = ScriptedNpcModel(forced_delta=0)
+    denied_model.forced_reply = "I'm sorry, but I don't serve beds."
+    denied = TownSession(load_town_config(), tmp_path / "deny", denied_model)
+    refused = asyncio.run(
+        denied.talk("mira", "Please charge me 3 gold for a bed."),
+    )
+    assert denied.game.gold == 12
+    assert refused.affinity_delta == 0
+
+
+def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:
+    """A large negative delta on 'hi' is dropped and is not gossip."""
+    model = ScriptedNpcModel(forced_emotion="annoyed", forced_delta=-3)
+    session = TownSession(load_town_config(), tmp_path, model)
+    result = asyncio.run(session.talk("bram", "hi"))
+    assert result.affinity_delta == 0
+    assert session.game.affinity("bram") == 0
+    assert not (tmp_path / "gossip.json").exists()
+
+
+def test_text_form_structured_output_is_parsed(tmp_path: Path) -> None:
+    """A written structured call is not sent back to the model."""
+
+    class TextSpeak(ScriptedNpcModel):
+        """The first speak step writes the tool as plain text."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._text_used = False
+
+        async def _call_api(self, *args, **kwargs):
+            tools = kwargs.get("tools")
+            if tools is None and len(args) >= 3:
+                tools = args[2]
+            if (
+                not self._text_used
+                and tools
+                and "GenerateStructuredOutput" in str(tools)
+            ):
+                self._text_used = True
+                text = (
+                    'GenerateStructuredOutput(reply="The forge is quiet.", '
+                    'emotion="neutral", affinity_delta=0, '
+                    'affinity_reason="small talk")'
+                )
+                self.calls.append(
+                    {
+                        "phase": "speak",
+                        "system": "",
+                        "user": "",
+                        "tools": "GenerateStructuredOutput",
+                        "saw_tool_result": "no",
+                        "tool_choice": "",
+                    },
+                )
+                return ChatResponse(
+                    content=[TextBlock(text=text)],
+                    is_last=True,
+                )
+            return await super()._call_api(*args, **kwargs)
+
+    model = TextSpeak()
+    session = TownSession(load_town_config(), tmp_path, model)
+    result = asyncio.run(session.talk("bram", "Hello."))
+    assert result.reply == "The forge is quiet."
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert len(speak) == 1
+    kwargs = _parse_structured_call(
+        'GenerateStructuredOutput(reply="Quiet.", emotion="warm", '
+        'affinity_delta=2, affinity_reason="gift")',
+    )
+    assert kwargs is not None
+    assert kwargs["reply"] == "Quiet."
+    assert kwargs["affinity_delta"] == 2
+    parsed = _parse_structured_call(
+        'GenerateStructuredOutput({"reply": "Quiet.", '
+        '"emotion": "neutral", "affinity_delta": 1, '
+        '"affinity_reason": "gift"})',
+    )
+    assert parsed is not None
+    assert parsed["affinity_delta"] == 1
+    real = ToolCallBlock(
+        id="real",
+        name="GenerateStructuredOutput",
+        input="{}",
+    )
+    mixed = ChatResponse(
+        content=[
+            TextBlock(text='GenerateStructuredOutput(reply="x")'),
+            real,
+        ],
+        is_last=True,
+    )
+    assert _promote_structured_text(mixed).content[1].id == "real"
 
 
 def _history_text(session: TownSession, npc_id: str) -> str:

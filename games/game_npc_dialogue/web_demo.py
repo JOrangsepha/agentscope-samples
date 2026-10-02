@@ -32,6 +32,10 @@ _NPC = "bram"
 _LOOP: asyncio.AbstractEventLoop | None = None
 
 
+class UnknownNpcError(ValueError):
+    """The request named a resident who does not live in town."""
+
+
 def ensure_loop() -> asyncio.AbstractEventLoop:
     """One loop for every request, so client connections stay open."""
     global _LOOP
@@ -151,6 +155,8 @@ class _Handler(BaseHTTPRequestHandler):
         """Talk, or let the town repeat a rumor."""
         try:
             self._post()
+        except UnknownNpcError as exc:
+            self._send_json({"error": str(exc)}, status=400)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self._send_error(exc)
 
@@ -199,7 +205,10 @@ def _talk(payload: dict) -> dict:
     npc_id = str(payload.get("npc_id") or _NPC)
     text = str(payload.get("text") or "").strip()
     if npc_id not in _SESSION.config.npcs:
-        npc_id = _NPC
+        known = ", ".join(_SESSION.config.npcs)
+        raise UnknownNpcError(
+            f"Unknown NPC '{npc_id}'. Known NPCs: {known}.",
+        )
     _NPC = npc_id
     if not text:
         return {"turn": None, "state": state_payload()}

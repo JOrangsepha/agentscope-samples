@@ -170,11 +170,12 @@ DashScope, OpenAI, or Ollama model follows the persona and tools instead.
 
 ### Gossip
 
-Residents share a small public log in `save/gossip.json`. A strong insult
-(affinity delta of -2 or lower) and quest news (accepted or completed)
-are written there and shown in the next resident's system prompt under
-"Town rumors". The player's name, trade, gold, and inventory stay in
-that NPC's own `MEMORY.md` and are not copied into the log.
+Residents share a small public log in `save/gossip.json`. An insult is
+written only when the player's own line is rude and the affinity delta
+is -2 or lower. Quest news (accepted or completed) is written too. Both
+appear in the next resident's system prompt under "Town rumors". The
+player's name, trade, gold, and inventory stay in that NPC's own
+`MEMORY.md` and are not copied into the log.
 
 `/wait` prints a short exchange (Mira or Rowan repeats the latest rumor).
 It does not call the model, so a normal spoken turn stays at two calls.
@@ -204,10 +205,12 @@ python eval_harness.py --provider dashscope --out eval_reports
 from 1 to 5. It sees the game state after the turn, not the tool trace.
 It is skipped for `--provider mock` and is not part of the two-call
 dialogue budget. The report states what each metric measures. State is
-this turn's own effect. Memory recall and gossip require the facts in
-the spoken reply. Persona checks that the reply does not use another
+this turn's own effect. Memory recall matches the spoken reply without
+case: "thief" counts for "stupid thief", and "told Bram" counts for the
+gossip sentence. Persona checks that the reply does not use another
 resident's marker. Affinity is positive only after a gift, a successful
-charge, or a quest accept or complete. Mock token counts stay 0.
+charge, or a quest accept or complete; the session raises a successful
+one of those to at least +1. Mock token counts stay 0.
 
 ### Web demo
 
@@ -221,6 +224,8 @@ python web_demo.py --provider mock --port 8765
 Open http://127.0.0.1:8765 . The page lists residents, takes a line,
 and shows gold, inventory, quests, affinity and emotion per resident,
 and recent gossip. **Wait** is the same scripted exchange as `/wait`.
+An unknown `npc_id` returns HTTP 400 and is not sent to the current
+resident.
 
 ![Millhaven web demo with the mock model](docs/web_demo.png)
 

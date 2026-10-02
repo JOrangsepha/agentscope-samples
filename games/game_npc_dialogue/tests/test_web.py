@@ -110,6 +110,36 @@ def test_talk_error_is_json_and_drops_the_line(tmp_path) -> None:
         server.shutdown()
 
 
+def test_unknown_npc_is_a_client_error(tmp_path) -> None:
+    """An unknown npc_id is HTTP 400 and does not talk to Bram."""
+    build_session("mock", None, str(tmp_path))
+    server = serve("127.0.0.1", 0)
+    port = server.server_address[1]
+    base = f"http://127.0.0.1:{port}"
+    try:
+        body = json.dumps({"npc_id": "nobody", "text": "hi"}).encode("utf-8")
+        request = Request(
+            base + "/api/talk",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=10) as talked:
+                talked.read()
+            raise AssertionError("expected HTTP 400")
+        except HTTPError as err:
+            assert err.code == 400
+            payload = json.loads(err.read())
+        assert "nobody" in payload["error"]
+        with urlopen(base + "/api/state", timeout=5) as state_page:
+            state = json.loads(state_page.read())
+        assert state["npc_id"] == "bram"
+        assert state["player"]["gold"] == 12
+        assert state["gossip"] == []
+    finally:
+        server.shutdown()
+
+
 def _texts(session: TownSession) -> list[str]:
     state = session._agent_states["bram"]  # pylint: disable=protected-access
     return [message.get_text_content() or "" for message in state.context]
