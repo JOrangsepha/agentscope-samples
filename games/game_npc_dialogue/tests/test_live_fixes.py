@@ -10,7 +10,15 @@ from mock_model import ScriptedNpcModel
 from npc_config import load_town_config
 from prompts import build_system_prompt
 from session import TownSession
-from speech import learn_player_name, polish_reply
+from speech import (
+    HONEST_EN,
+    HONEST_ZH,
+    SPEAK_CUE,
+    guard_unproven_transfer,
+    learn_player_name,
+    polish_reply,
+    reply_language,
+)
 
 
 def _session(
@@ -107,43 +115,74 @@ def test_tools_are_limited_to_the_npc(tmp_path: Path) -> None:
     assert session.game.gold == 9
 
 
-def test_language_rule_and_affinity_rubric_are_in_the_prompt() -> None:
-    """The prompt tells the model which language to use, and when to deduct."""
+def test_language_is_chosen_from_the_player_line() -> None:
+    """The speak prompt names Chinese or English from this player line."""
+    assert reply_language("你好米拉") == "Simplified Chinese"
+    assert reply_language("Hello again.") == "English"
     config = load_town_config()
-    npc = config.npc("bram")
-    prompt = build_system_prompt(
+    npc = config.npc("mira")
+    chinese = build_system_prompt(
         town_name=config.town_name,
         npc=npc,
-        state_text="Player: Traveler\nGold: 12",
-        affinity=0,
-        emotion="neutral",
+        state_text="Player: Kestrel\nGold: 12",
+        affinity=5,
+        emotion="warm",
+        speaking=True,
+        player_text="你好米拉",
+        language="Simplified Chinese",
     )
-    assert "Reply in the language the player just used." in prompt
-    assert "If that message is Chinese, reply in Chinese." in prompt
-    assert "only for rudeness, threats, or a broken promise" in prompt
-    assert "changes affinity by 0" in prompt
-    assert "one or two sentences" in prompt
-    assert "stage directions" in prompt
-    assert "adjust_gold" not in prompt
-    assert "update_quest" not in prompt
+    assert "Reply in Simplified Chinese." in chinese
+    assert "The player said: 你好米拉" in chinese
+    assert "only for rudeness, threats, or a broken promise" in chinese
+    assert "changes affinity by 0" in chinese
+    assert "one or two sentences" in chinese
+    assert "stage directions" in chinese
+    assert "adjust_gold" not in chinese
+    assert "update_quest" not in chinese
+    english = build_system_prompt(
+        town_name=config.town_name,
+        npc=npc,
+        state_text="Player: Kestrel",
+        affinity=5,
+        emotion="warm",
+        speaking=True,
+        player_text="Hello again.",
+        language="English",
+    )
+    assert "Reply in English." in english
+    assert "Reply in Simplified Chinese." not in english
 
 
 def test_player_name_updates_from_an_introduction(tmp_path: Path) -> None:
-    """English and Chinese introductions replace the default name."""
+    """Introductions set the name. Questions and disclaimers do not."""
     assert learn_player_name("I'm a traveling carpenter.") is None
     assert learn_player_name("My name is Kestrel.") == "Kestrel"
+    assert learn_player_name("My name is Mary Ann.") == "Mary Ann"
+    assert learn_player_name("My name is not important") is None
     assert learn_player_name("我叫Kestrel") == "Kestrel"
+    assert learn_player_name("你还记得我叫什么吗？") is None
 
     session, model = _session(tmp_path)
-    asyncio.run(
-        session.talk("rowan", "Hello, my name is Kestrel."),
-    )
+    asyncio.run(session.talk("rowan", "Hello, my name is Kestrel."))
     assert session.game.player_name == "Kestrel"
     assert "Player: Kestrel" in model.calls[0]["system"]
+    asyncio.run(session.talk("rowan", "你还记得我叫什么吗？"))
+    assert session.game.player_name == "Kestrel"
 
     chinese, _model = _session(tmp_path / "cn")
     asyncio.run(chinese.talk("mira", "你好，我叫Kestrel。"))
     assert chinese.game.player_name == "Kestrel"
+    stored = (chinese.memory_dir("mira") / "MEMORY.md").read_text(
+        encoding="utf-8",
+    )
+    assert "The player's name is Kestrel." in stored
+
+    named, _model = _session(tmp_path / "ann")
+    asyncio.run(named.talk("bram", "My name is Mary Ann."))
+    assert named.game.player_name == "Mary Ann"
+    refused, _model = _session(tmp_path / "not")
+    asyncio.run(refused.talk("bram", "My name is not important"))
+    assert refused.game.player_name == "Traveler"
 
 
 def test_a_strong_affinity_change_is_remembered(tmp_path: Path) -> None:
@@ -194,6 +233,77 @@ def test_polish_reply_drops_stage_directions_and_leaked_fields() -> None:
         "The player was polite.",
     )
     assert leaked == "Good evening."
+    chinese = polish_reply("没有。锤子还在丢着。你要是见着了，就送回来。")
+    assert chinese == "没有。 锤子还在丢着。"
+    quoted = polish_reply('She said "Go." He stayed. A third sentence.')
+    assert quoted == 'She said "Go." He stayed.'
+
+
+def test_text_only_action_cannot_give_or_charge(tmp_path: Path) -> None:
+    """Text from the action phase cannot give an item or take gold."""
+    gift_model = ScriptedNpcModel(act_text="Here you go! Take the horseshoe.")
+    gift_session = TownSession(
+        load_town_config(),
+        tmp_path / "gift",
+        gift_model,
+    )
+    gift = asyncio.run(
+        gift_session.talk("bram", "Please give me a horseshoe."),
+    )
+    assert gift_model.calls[0]["tool_choice"] == "required"
+    assert gift_model.calls[0]["phase"] == "act"
+    assert "horseshoe" not in gift_session.game.inventory
+    assert gift.reply == HONEST_EN
+    assert "take the horseshoe" not in gift.reply.lower()
+
+    charge_model = ScriptedNpcModel(
+        act_text="That'll be three gold for a warm bed.",
+    )
+    charge_session = TownSession(
+        load_town_config(),
+        tmp_path / "bed",
+        charge_model,
+    )
+    charge = asyncio.run(
+        charge_session.talk("mira", "I'd like a bed for the night."),
+    )
+    assert charge_session.game.gold == 12
+    assert charge.reply == HONEST_EN
+    history = _history_text(charge_session, "mira")
+    assert SPEAK_CUE not in history
+    assert "That'll be three gold" not in history
+
+
+def test_speak_prompt_switches_language_with_the_player(
+    tmp_path: Path,
+) -> None:
+    """The speak prompt names the language of this line, then the next one."""
+    session, model = _session(tmp_path)
+    asyncio.run(session.talk("mira", "你好米拉"))
+    asyncio.run(session.talk("mira", "Hello again."))
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert "Reply in Simplified Chinese." in speak[0]["system"]
+    assert "The player said: 你好米拉" in speak[0]["system"]
+    assert "Reply in English." in speak[1]["system"]
+    assert SPEAK_CUE not in _history_text(session, "mira")
+    assert (
+        guard_unproven_transfer(
+            "给你！",
+            ["brown loaf"],
+            [],
+            False,
+            "Simplified Chinese",
+        )
+        == HONEST_ZH
+    )
+
+
+def _history_text(session: TownSession, npc_id: str) -> str:
+    state = session._agent_states[npc_id]  # pylint: disable=protected-access
+    parts = []
+    for message in state.context:
+        parts.append(message.get_text_content() or "")
+    return "\n".join(parts)
 
 
 def _act_tools(model: ScriptedNpcModel, npc_name: str) -> set[str]:

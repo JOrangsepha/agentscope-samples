@@ -16,9 +16,8 @@ from agentscope.formatter import DashScopeChatFormatter
 from agentscope.message import TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse
 
-from speech import SPEAK_CUE
+from speech import SPEAK_CUE, learn_player_name
 
-_NAME_RE = re.compile(r"my name is ([a-z]+)", re.IGNORECASE)
 _AFFINITY_RE = re.compile(r"Affinity:\s*(-?\d+)")
 _NPC_RE = re.compile(r"^You are ([^,]+),", re.MULTILINE)
 _STRUCTURED = "GenerateStructuredOutput"
@@ -50,7 +49,7 @@ class MockCredential(CredentialBase):
 class ScriptedNpcModel(ChatModelBase):
     """Offline stand-in for DashScope / OpenAI / Ollama."""
 
-    def __init__(self) -> None:
+    def __init__(self, act_text: str | None = None) -> None:
         super().__init__(
             credential=MockCredential(),
             model="scripted-npc",
@@ -60,6 +59,8 @@ class ScriptedNpcModel(ChatModelBase):
         # Built-in models set this. Agent.reply reads it before each call.
         self.formatter = DashScopeChatFormatter()
         self.calls: list[dict[str, str]] = []
+        # When set, the action phase returns this text and no tool call.
+        self.act_text = act_text
 
     async def _call_api(
         self,
@@ -70,13 +71,14 @@ class ScriptedNpcModel(ChatModelBase):
         **kwargs: Any,
     ) -> ChatResponse:
         """Return one act step, or the spoken structured output."""
-        del model_name, tool_choice, kwargs
+        del model_name, kwargs
         system = _system_text(messages)
         player = _player_text(messages)
         names = _tool_names(tools)
         this_turn = _since_player(messages)
         saw = _saw_tool_result(this_turn)
         phase = "speak" if _STRUCTURED in names else "act"
+        choice = getattr(tool_choice, "mode", None)
         self.calls.append(
             {
                 "phase": phase,
@@ -84,34 +86,93 @@ class ScriptedNpcModel(ChatModelBase):
                 "user": player,
                 "tools": ",".join(names),
                 "saw_tool_result": "yes" if saw else "no",
+                "tool_choice": "" if choice is None else str(choice),
             },
         )
         if phase == "speak":
-            reply, emotion, delta, reason = _choose_reply(
+            return _speak_response(
+                len(self.calls),
+                self.act_text,
                 system,
                 player,
                 _tool_result_text(this_turn),
             )
-            block = ToolCallBlock(
-                id=f"structured-{len(self.calls)}",
-                name=_STRUCTURED,
-                input=json.dumps(
-                    {
-                        "reply": reply,
-                        "emotion": emotion,
-                        "affinity_delta": delta,
-                        "affinity_reason": reason,
-                    },
-                ),
-            )
-            return ChatResponse(content=[block], is_last=True)
-        if saw:
-            return _text("The tools have finished.")
-        offered = set(names)
-        blocks = _game_tool_calls(system, player, offered)
-        if blocks:
-            return ChatResponse(content=blocks, is_last=True)
-        return _text("Nothing to change.")
+        return _act_response(
+            self.act_text,
+            saw,
+            set(names),
+            system,
+            player,
+        )
+
+
+def _speak_response(
+    number: int,
+    act_text: str | None,
+    system: str,
+    player: str,
+    tool_text: str,
+) -> ChatResponse:
+    if act_text:
+        reply, emotion, delta, reason = (
+            act_text,
+            "neutral",
+            0,
+            "Copied the action line.",
+        )
+    else:
+        reply, emotion, delta, reason = _choose_reply(
+            system,
+            player,
+            tool_text,
+        )
+    return _structured(number, reply, emotion, delta, reason)
+
+
+def _act_response(
+    act_text: str | None,
+    saw: bool,
+    offered: set[str],
+    system: str,
+    player: str,
+) -> ChatResponse:
+    if act_text and not saw:
+        return _text(act_text)
+    if saw:
+        return _text("The tools have finished.")
+    blocks = _game_tool_calls(system, player, offered)
+    if blocks:
+        return ChatResponse(content=blocks, is_last=True)
+    if "no_action" in offered:
+        block = _call(
+            "no_action",
+            {"reason": "Nothing to change."},
+            "none",
+        )
+        return ChatResponse(content=[block], is_last=True)
+    return _text("Nothing to change.")
+
+
+def _structured(
+    number: int,
+    reply: str,
+    emotion: str,
+    delta: int,
+    reason: str,
+) -> ChatResponse:
+    block = ToolCallBlock(
+        id=f"structured-{number}",
+        name=_STRUCTURED,
+        input=json.dumps(
+            {
+                "reply": reply,
+                "emotion": emotion,
+                "affinity_delta": delta,
+                "affinity_reason": reason,
+            },
+        ),
+    )
+    return ChatResponse(content=[block], is_last=True)
 
 
 def _text(text: str) -> ChatResponse:
@@ -244,14 +305,13 @@ def _game_tool_calls(
     """Side-effect tools for this line. Structured output is a later call."""
     user_l = user.lower()
     calls: list[ToolCallBlock] = []
-    name_match = _NAME_RE.search(user)
-    if name_match and "remember_player" in offered:
-        name = name_match.group(1).capitalize()
+    learned = learn_player_name(user)
+    if learned and "remember_player" in offered:
         if "bak" in user_l:
-            fact = f"The player's name is {name}, a baker."
+            fact = f"The player's name is {learned}, a baker."
         else:
-            fact = f"The player's name is {name}."
-        calls.append(_call("remember_player", {"fact": fact}, name))
+            fact = f"The player's name is {learned}."
+        calls.append(_call("remember_player", {"fact": fact}, learned))
     gift = _requested_gift(user_l, system)
     if gift is not None and "give_item" in offered:
         calls.append(_call("give_item", {"item": gift}, gift))
@@ -334,11 +394,15 @@ def _introduction_reply(
     tool_text: str,
 ) -> tuple[str, str, int, str] | None:
     del system, tool_text
-    match = _NAME_RE.search(user_l)
-    if match is None:
+    learned = learn_player_name(user_l)
+    if learned is None:
         return None
-    spoken = _name_reply(match.group(1).capitalize(), user_l)
-    return (spoken, "grateful", 2, "The player shared their name.")
+    return (
+        _name_reply(learned, user_l),
+        "grateful",
+        2,
+        "The player shared their name.",
+    )
 
 
 def _thanks_reply(

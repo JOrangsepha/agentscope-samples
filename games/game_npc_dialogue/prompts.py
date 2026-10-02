@@ -25,6 +25,10 @@ _TOOL_HELP = {
         "complete a quest you give when the player is carrying the "
         "required item. The game pays the reward once."
     ),
+    "no_action": (
+        "call this when gold, items, quests, and memory should stay "
+        "unchanged. Speech cannot give an item or take gold."
+    ),
 }
 
 
@@ -48,6 +52,9 @@ def build_system_prompt(
     notable: str = "",
     stock: list[str] | None = None,
     gives_quests: bool = False,
+    speaking: bool = False,
+    player_text: str = "",
+    language: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
     shown = npc.gifts if stock is None else stock
@@ -56,8 +63,7 @@ def build_system_prompt(
     impression = ""
     if notable:
         impression = f"Last strong impression: {notable}\n"
-    tools = _tool_lines(npc, gives_quests)
-    return (
+    head = (
         f"You are {npc.name}, the {npc.role} of {town_name}.\n\n"
         "# Persona\n"
         f"{npc.persona}\n\n"
@@ -65,31 +71,45 @@ def build_system_prompt(
         f"Affinity: {affinity} (range -100 to 100). {tone}\n"
         f"Last emotion you showed: {emotion}.\n"
         f"{impression}"
-        "Let the affinity change your wording. A high score is warm "
-        "and helpful. A low score is short or suspicious. "
-        "Stay in character either way.\n"
+        "Let the affinity change your wording. Stay in character.\n"
         "Change affinity by a negative number only for rudeness, "
         "threats, or a broken promise. "
         "A polite request you cannot fulfill changes affinity by 0.\n\n"
-        "# How you speak\n"
-        "Reply in the language the player just used. "
-        "If that message is Chinese, reply in Chinese.\n"
-        "Speak in one or two sentences. "
-        "Do not write asterisks or stage directions.\n"
-        "Do not offer an item, coins, or a quest change unless a tool "
-        "result in this turn says it happened.\n\n"
         "# Game state\n"
         f"{state_text}\n"
         f"Stock you can give now: {stock_text}.\n\n"
+    )
+    if speaking:
+        return head + _speech_rules(player_text, language)
+    tools = _tool_lines(npc, gives_quests)
+    return (
+        head + "# Action\n"
+        "Call one tool. This phase does not speak to the player.\n"
+        "If gold, items, quests, and memory should stay unchanged, "
+        "call no_action.\n"
+        "Do not write a spoken line. A sentence cannot give an item "
+        "or take gold.\n\n"
         "# Tools\n"
         f"{tools}\n"
-        "Call a tool only when the world should change. "
-        "If a tool refuses, say so. Do not invent the result.\n"
+    )
+
+
+def _speech_rules(player_text: str, language: str) -> str:
+    spoken = player_text.strip() or "(empty)"
+    lang = language or "English"
+    return (
+        "# This turn\n"
+        f"The player said: {spoken}\n"
+        f"Reply in {lang}.\n"
+        "Speak in one or two sentences. "
+        "Do not write asterisks or stage directions.\n"
+        "Do not say you gave an item or took gold unless a tool "
+        "result in this turn says that happened.\n"
     )
 
 
 def _tool_lines(npc: NpcSpec, gives_quests: bool) -> str:
-    names = ["remember_player", "give_item"]
+    names = ["remember_player", "give_item", "no_action"]
     if npc.can_charge:
         names.append("charge_player")
     if gives_quests:

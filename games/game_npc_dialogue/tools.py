@@ -23,6 +23,7 @@ GAME_TOOL_NAMES = [
     "charge_player",
     "accept_quest",
     "complete_quest",
+    "no_action",
 ]
 
 
@@ -41,6 +42,19 @@ def build_npc_tools(
             item: Item name. It must be on your current stock list.
         """
         return state.give_item(npc_id, item)
+
+    def no_action(reason: str) -> str:
+        """Record that gold, items, quests, and memory stay as they are.
+
+        Call this when you will not give an item, charge the player,
+        accept or complete a quest, or save a new fact. Do not describe
+        a gift or a payment in text instead of calling a tool.
+
+        Args:
+            reason: Short reason, such as small talk or a refusal.
+        """
+        cleaned = " ".join(reason.split()) or "Nothing to change."
+        return f"No game state changed ({cleaned})."
 
     def remember_player(fact: str) -> str:
         """Save one durable fact about the player for later sessions.
@@ -90,7 +104,11 @@ def build_npc_tools(
             )
         return result
 
-    functions: list[Callable[..., str]] = [give_item, remember_player]
+    functions: list[Callable[..., str]] = [
+        give_item,
+        remember_player,
+        no_action,
+    ]
     if npc.can_charge:
         functions.append(charge_player)
     if state.config.gives_quests(npc_id):
