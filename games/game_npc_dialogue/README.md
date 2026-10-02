@@ -28,8 +28,13 @@ API and is a separate example.
 ├── speech.py                 # Player name, and cleanup of the spoken line
 ├── tools.py                  # Per-NPC give, charge, quest, and memory tools
 ├── session.py                # One visit: act, then speak, then save affinity
+├── gossip.py                 # Public rumors; private facts stay per NPC
 ├── model_factory.py          # DashScope, OpenAI-compatible, Ollama, or mock
 ├── mock_model.py             # Scripted model for tests and offline play
+├── eval_harness.py           # Scripted eval; writes markdown and JSON
+├── web_demo.py               # Browser UI on the same TownSession
+├── web/index.html            # One page, no extra frontend package
+├── docs/web_demo.png         # Screenshot of the mock web demo
 ├── requirements.txt
 └── tests/                    # Offline pytest suite
 ```
@@ -125,6 +130,8 @@ Commands inside the loop:
 | `/npc bram` | talk to Bram (`mira`, `rowan` work the same way) |
 | `/npcs` | list residents |
 | `/state` | gold, inventory, quests, affinity, last emotion |
+| `/gossip` | public rumors shared between residents |
+| `/wait` | a short scripted exchange about the latest rumor |
 | `/help` | show commands |
 | `/quit` | leave town |
 
@@ -161,6 +168,59 @@ The scripted model only reacts to a few phrases (introductions, gifts,
 the hammer quest, thanks, insults, and "do you remember me"). A live
 DashScope, OpenAI, or Ollama model follows the persona and tools instead.
 
+### Gossip
+
+Residents share a small public log in `save/gossip.json`. A strong insult
+(affinity delta of -2 or lower) and quest news (accepted or completed)
+are written there and shown in the next resident's system prompt under
+"Town rumors". The player's name, trade, gold, and inventory stay in
+that NPC's own `MEMORY.md` and are not copied into the log.
+
+`/wait` prints a short exchange (Mira or Rowan repeats the latest rumor).
+It does not call the model, so a normal spoken turn stays at two calls.
+
+### Evaluation
+
+The harness plays a fixed 13-turn script: introduction, gift, rudeness,
+quest accept, a claim with no hammer, receiving the hammer, a real
+completion, a repeat reward, a paid bed, a refused hot meal, a Chinese
+line, a new session that must recall the name and the insult, and Mira
+hearing the insult as gossip. It writes `report.md` and `report.json`.
+
+Offline, no API key (this is what CI can run):
+
+```bash
+python eval_harness.py --provider mock --out eval_reports
+```
+
+With a live provider (needs that provider's key; not run in CI):
+
+```bash
+python eval_harness.py --provider dashscope --out eval_reports
+```
+
+`--judge` adds one extra model call per turn that scores persona fit
+from 1 to 5. It is skipped for `--provider mock` and is not part of the
+two-call dialogue budget. The mock run scores state, memory recall
+(facts present in the next session's system prompt), language, an
+exclusive-marker persona check, affinity sign, and calls, tokens, and
+latency per turn. Mock token counts stay 0 because the scripted model
+does not report usage.
+
+### Web demo
+
+Same `TownSession` as the CLI, served by the Python standard library:
+
+```bash
+python web_demo.py --provider mock --port 8765
+```
+
+Open http://127.0.0.1:8765 . The page lists residents, takes a line,
+and shows gold, inventory, quests, affinity and emotion per resident,
+and recent gossip. **Wait** is the same scripted exchange as `/wait`.
+
+![Millhaven web demo with the mock model](docs/web_demo.png)
+
 ### Tests
 
 No API key is required:
@@ -176,3 +236,6 @@ python -m pytest tests -q
 - Tools that update inventory, a charge, and quest progress in `game_state.json`, with the reward paid by code
 - Per-turn emotion and affinity, parsed from structured output and shown to the NPC next turn
 - Providers: DashScope (default), OpenAI-compatible endpoints, Ollama, and an offline mock
+- Public gossip (`gossip.json`) separate from private per-NPC memory, plus `/wait`
+- A scripted eval harness (`eval_harness.py`) that runs offline or against a live provider
+- A browser demo (`web_demo.py`) on the same session, with no extra web dependency

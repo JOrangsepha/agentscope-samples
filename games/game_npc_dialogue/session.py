@@ -15,6 +15,7 @@ from agentscope.state import AgentState
 from agentscope.tool import Toolkit
 
 from game_state import GameState
+from gossip import narrate_wait, prompt_block, record_public_events
 from memory_store import remember_fact
 from npc_config import TownConfig
 from prompts import NPC_MEMORY_INSTRUCTIONS, build_system_prompt
@@ -141,8 +142,20 @@ class TownSession:
             _quest_failed(state, player_text),
             paid,
         )
+        record_public_events(
+            self.save_dir,
+            npc_id,
+            npc.name,
+            delta=result.affinity_delta,
+            player_text=player_text,
+            quest_event=_public_quest_event(state, player_text),
+        )
         _scrub_history(state)
         return result
+
+    def wait_in_town(self) -> str:
+        """Let residents repeat the latest public rumor. No model call."""
+        return narrate_wait(self.save_dir, self.config)
 
     def _make_agent(
         self,
@@ -212,6 +225,7 @@ class TownSession:
             language=language,
             hammer_status=_hammer_status(self.game),
             paid_note=paid_note,
+            rumors=prompt_block(self.save_dir),
         )
 
 
@@ -381,6 +395,22 @@ def _apply_turn(
         affinity=affinity,
         affinity_reason=reason,
     )
+
+
+def _public_quest_event(state: AgentState, player_text: str) -> str:
+    """``accepted`` or ``completed`` when a quest tool succeeded."""
+    start = _player_index(state.context, player_text)
+    if start is None:
+        return ""
+    event = ""
+    for message in state.context[start + 1 :]:
+        for block in _named_tool_blocks(message, {"tool_result"}):
+            if block.name not in {"accept_quest", "complete_quest"}:
+                continue
+            if not _quest_succeeded(block.name, _result_text(block)):
+                continue
+            event = "accepted" if block.name == "accept_quest" else "completed"
+    return event
 
 
 def _quest_failed(state: AgentState, player_text: str) -> bool:

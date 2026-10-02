@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Millhaven</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1915;
+      --muted: #5c5348;
+      --paper: #f4efe4;
+      --panel: #fffaf2;
+      --line: #d9cbb6;
+      --pine: #1f4a3a;
+      --pine-2: #2f6a52;
+      --accent: #8c3d2f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    header {
+      background: var(--pine);
+      color: #f4efe4;
+      padding: 16px 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+    }
+    header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+    header p { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; opacity: 0.85; }
+    main {
+      display: grid;
+      grid-template-columns: 200px minmax(0, 1fr) 280px;
+      gap: 16px;
+      padding: 16px;
+      min-height: calc(100vh - 68px);
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    button.npc {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0 0 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.npc.active { border-color: var(--pine); background: #e7f2ec; }
+    button.npc small { display: block; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
+    #log {
+      min-height: 320px;
+      max-height: calc(100vh - 240px);
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bubble { padding: 8px 10px; border-radius: 8px; }
+    .bubble.you { background: #efe6d6; }
+    .bubble.npc { background: #e7f2ec; }
+    .meta { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; color: var(--muted); }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input[type="text"] {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      font: inherit;
+      background: #fff;
+    }
+    button.send, button.wait {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: white;
+      background: var(--pine);
+      font: inherit;
+      cursor: pointer;
+    }
+    button.wait { background: var(--accent); }
+    ul { margin: 0; padding-left: 18px; }
+    li { margin: 4px 0; }
+    .stat {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      margin: 0 0 8px;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+      header { flex-direction: column; align-items: flex-start; }
+      #log { max-height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Millhaven</h1>
+    <p id="model">loading…</p>
+  </header>
+  <main>
+    <section>
+      <h2>Residents</h2>
+      <div id="npcs"></div>
+    </section>
+    <section>
+      <h2>Conversation</h2>
+      <div id="log"></div>
+      <form id="talk">
+        <input id="line" type="text" placeholder="Say something…" autocomplete="off" />
+        <button class="send" type="submit">Say</button>
+        <button class="wait" id="wait" type="button">Wait</button>
+      </form>
+    </section>
+    <section>
+      <h2>Town ledger</h2>
+      <p class="stat" id="player"></p>
+      <p class="stat" id="gold"></p>
+      <h2>Inventory</h2>
+      <ul id="inventory"></ul>
+      <h2>Quests</h2>
+      <ul id="quests"></ul>
+      <h2>Affinity</h2>
+      <ul id="affinity"></ul>
+      <h2>Gossip</h2>
+      <ul id="gossip"></ul>
+    </section>
+  </main>
+  <script>
+    let current = "bram";
+    const log = document.getElementById("log");
+
+    function addBubble(kind, title, body) {
+      const node = document.createElement("div");
+      node.className = "bubble " + kind;
+      node.innerHTML = "<div class='meta'></div><div></div>";
+      node.querySelector(".meta").textContent = title;
+      node.querySelector("div:last-child").textContent = body;
+      log.appendChild(node);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function fillList(id, items) {
+      const node = document.getElementById(id);
+      node.replaceChildren();
+      items.forEach((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        node.appendChild(li);
+      });
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.textContent = "None";
+        node.appendChild(li);
+      }
+    }
+
+    function render(state) {
+      document.getElementById("model").textContent =
+        state.model + " · " + state.town;
+      document.getElementById("player").textContent = "Player: " + state.player.name;
+      document.getElementById("gold").textContent = "Gold: " + state.player.gold;
+      fillList("inventory", state.player.inventory);
+      fillList("quests", state.quests.map((q) => q.title + " [" + q.status + "]"));
+      fillList("affinity", state.residents.map((npc) =>
+        npc.name + " " + npc.affinity + " / " + npc.emotion));
+      fillList("gossip", state.gossip.map((entry) =>
+        "[" + entry.kind + "] " + entry.text));
+      const box = document.getElementById("npcs");
+      box.replaceChildren();
+      let selectedName = current;
+      state.residents.forEach((npc) => {
+        if (npc.id === current) selectedName = npc.name;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "npc" + (npc.id === current ? " active" : "");
+        button.innerHTML = "<strong></strong><small></small>";
+        button.querySelector("strong").textContent = npc.name;
+        button.querySelector("small").textContent = npc.role;
+        button.addEventListener("click", () => {
+          current = npc.id;
+          render(state);
+        });
+        box.appendChild(button);
+      });
+      document.getElementById("line").placeholder =
+        "Say something to " + selectedName + "…";
+    }
+
+    async function refresh() {
+      const response = await fetch("/api/state");
+      const state = await response.json();
+      current = state.npc_id;
+      render(state);
+    }
+
+    document.getElementById("talk").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.getElementById("line");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      addBubble("you", "You", text);
+      const response = await fetch("/api/talk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ npc_id: current, text }),
+      });
+      const data = await response.json();
+      const turn = data.turn;
+      addBubble(
+        "npc",
+        turn.npc_name + " · " + turn.emotion + " · " + turn.affinity + " (" + turn.affinity_delta + ")",
+        turn.reply,
+      );
+      render(data.state);
+    });
+
+    document.getElementById("wait").addEventListener("click", async () => {
+      const response = await fetch("/api/wait", { method: "POST" });
+      const data = await response.json();
+      addBubble("npc", "The square", data.text);
+      render(data.state);
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

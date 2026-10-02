@@ -13,13 +13,18 @@
 - 工具真正改写金币、背包和任务。
 - 每轮给出情绪和好感度，持久化后影响下一轮提示。
 - 命令行可以切换 NPC。没有 API Key 时用脚本模型把上述路径跑通。
+- 公开传闻与私人记忆分开，并有一段不调用模型的居民对白。
+- 固定脚本评测可以离线跑完，也可以换真实提供方。
+- 浏览器页面与命令行共用同一个 `TownSession`。
 
 ## 架构
 
 ```mermaid
 flowchart TD
     CLI["main.py 命令行"] --> Session["TownSession"]
-    Session --> Prompt["系统提示: 人设 + 好感度 + 游戏状态"]
+    Web["web_demo.py 浏览器"] --> Session
+    Eval["eval_harness.py 固定脚本"] --> Session
+    Session --> Prompt["系统提示: 人设 + 好感度 + 游戏状态 + 镇上流言"]
     Session --> Agent["agentscope.agent.Agent"]
     Prompt --> Agent
     Agent --> Model["ChatModel: DashScope / OpenAI / Ollama / mock"]
@@ -28,7 +33,9 @@ flowchart TD
     Agent --> Memory["AgenticMemoryMiddleware"]
     Act --> Save["save/game_state.json"]
     Act --> Notes["save/memory/npc/Memory/MEMORY.md"]
+    Session --> Gossip["save/gossip.json 公开传闻"]
     Memory --> Notes
+    Gossip --> Prompt
     Speak --> Polish["polish_reply"]
     Polish --> Save
 ```
@@ -94,7 +101,7 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **28 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **32 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）
@@ -107,6 +114,11 @@ python -m pytest tests -q
   送出物品或收钱、中文分句和引号分句、收费成功后的 “here you go” /
   “给你” 不再被当成假赠送、任务工具返回 already/cannot 时好感不能上升
   （`test_live_fixes.py`）
+- 侮辱和任务进展进入公开传闻，姓名和职业不进入；`/wait` 复述最新传闻
+  （`test_gossip.py`）
+- 固定脚本评测在 mock 上状态、记忆、语言、人设、好感均为 1.0，且每轮
+  2 次调用（`test_eval.py`）
+- 网页返回页面和账本，说话与等待走同一 `TownSession`（`test_web.py`）
 
 另外用同一脚本模型手工跑过 CLI，记录见 `README_zh.md` 的示例访问。
 DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没有跑。
@@ -299,12 +311,65 @@ DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没�
 3. “米拉，能给我一条黑面包吗？” 得到了英文。玩家原句要求中文、而回复里
    没有汉字时，说话步骤会再生成一次。
 
+## 评测方法与离线结果
+
+`eval_harness.py` 用同一份 `TownSession.talk()`，不另写一套对话逻辑。
+脚本固定 13 轮，顺序是：向 Bram 自报姓名与职业、要马掌、辱骂、向 Rowan
+接受任务、没有锤子时声称已找到、向 Mira 领取锻造锤、交还锤子并领 8 枚
+金币、再次索要奖励、向 Mira 支付床位、要求热饭（应拒绝）、一句中文、
+新进程里问 Bram 是否记得自己、再向 Mira 问好以确认传闻已进入系统提示。
+
+指标都按这一份脚本计算：
+
+| 指标 | 怎么判 |
+| --- | --- |
+| 状态正确率 | 该轮结束后的金币、姓名、任务状态、背包与脚本期望一致，因此口头说法和工具结果必须落到同一份 `game_state` |
+| 记忆召回率 | 只统计标了 `recall_system_has` 的轮次。新会话的系统提示必须同时含有 “Kestrel” 和 “stupid thief”；Mira 的系统提示必须含有 “finds the player rude” |
+| 语言一致率 | `reply_language(reply)` 与玩家原句的语言相同 |
+| 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 Oak and Lantern、Rowan 的 town council）。`--judge` 另用模型按 1–5 打分，3 分及以上算过；mock 跳过，且这次调用不计入对话预算 |
+| 好感合理性 | 该轮 `affinity_delta` 的符号符合脚本（正、负、零或非负） |
+| 调用 / token / 延迟 | 包装 `ChatModel._call_api`，按轮汇总次数、输入输出 token 和墙钟时间 |
+
+离线命令：
+
+```bash
+cd games/game_npc_dialogue
+python eval_harness.py --provider mock --out eval_reports
+```
+
+在 Python 3.12.3、`agentscope==2.0.9`、模型 `scripted-npc` 上，13 轮结果
+（`Judge: skipped`）：
+
+| 指标 | 值 |
+| --- | --- |
+| 状态正确率 | 100% |
+| 记忆召回率 | 100% |
+| 语言一致率 | 100% |
+| 人设一致率 | 100% |
+| 好感合理性 | 100% |
+| 每轮调用 | 2.00 |
+| 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
+| 平均 / 最大延迟 | 0.020 秒 / 0.062 秒 |
+
+`pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
+CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
+DashScope 实机评测和 `--judge` 没有跑。
+
+## 传闻
+
+`gossip.py` 在 `talk()` 应用好感之后写 `save/gossip.json`，不增加模型
+调用。公开的只有两类：`affinity_delta <= -2` 的侮辱，以及任务被接受或
+完成。姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
+“Town rumors” 一节；没有传闻时写明哪些会公开、哪些保持私人。`/wait`
+和网页上的 Wait 调用 `narrate_wait`：由 Mira 或 Rowan 用固定句子复述
+最新一条公开传闻，并记一条 `exchange`。这段对白不进入模型。
+
 ## 局限
 
 - 脚本模型是关键词分支，不能代表真实模型是否稳定调用工具或遵守人设。
 - 关闭异步检索后，只有 `MEMORY.md` 的索引行进入上下文。事实写在索引行里，文件正文不会自动展开。
 - 同一进程内的聊天没有单独序列化。只保证游戏状态和长期记忆跨进程。
-- 三名 NPC 不共享记忆，也不会互相交谈。
+- 公开传闻只有侮辱和任务进展。居民对白是固定句子，不是模型生成的对话。
 - 好感度是一个整数，没有事件时间线。
 - 工具在 `BYPASS` 模式下执行，适合这个本地单人循环，不适合不可信环境。
 
@@ -312,5 +377,6 @@ DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没�
 
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
-- 让旅店老板的记忆对铁匠可见，做成镇上流言。
+- 用 `python eval_harness.py --provider dashscope --judge` 给同一份 13 轮
+  脚本留下实机分数。网页也可以换成 `--provider dashscope`。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

@@ -11,6 +11,7 @@ from agentscope.model import ChatModelBase
 
 from model_factory import PROVIDERS, build_chat_model, resolve_provider
 from npc_config import TownConfig, load_town_config
+from gossip import format_log
 from session import TownSession
 
 _HELP = """
@@ -18,6 +19,8 @@ Commands:
   /npc <id>   talk to another resident (bram, mira, rowan)
   /npcs       list residents
   /state      gold, inventory, quests, affinity
+  /gossip     public rumors shared between residents
+  /wait       residents repeat the latest rumor (no model call)
   /help       show this help
   /quit       leave town
 Anything else is said to the current resident.
@@ -127,6 +130,10 @@ def _run_simple_command(
         for npc_id, npc in config.npcs.items():
             mark = "*" if npc_id == current else " "
             print(f" {mark} {npc_id}: {npc.name}, {npc.role}")
+    elif command == "/gossip":
+        print(format_log(session.save_dir))
+    elif command == "/wait":
+        print(session.wait_in_town())
     elif command not in {"/npc", "/quit", "/exit", "/q"}:
         print(f"Unknown command '{command}'. Type /help.")
 

@@ -80,6 +80,7 @@ def build_system_prompt(
     language: str = "",
     hammer_status: str = "available",
     paid_note: str = "",
+    rumors: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
     shown = npc.gifts if stock is None else stock
@@ -105,6 +106,8 @@ def build_system_prompt(
         f"{state_text}\n"
         f"Stock you can give now: {stock_text}.\n"
         f"{_service_line(npc)}"
+        "# Town rumors\n"
+        f"{_rumor_text(rumors)}\n\n"
         "# Facts\n"
         f"{hammer_fact(hammer_status)}\n"
         "Do not assign the player's trade to another resident.\n"
@@ -125,6 +128,16 @@ def build_system_prompt(
         "or take gold.\n\n"
         "# Tools\n"
         f"{tools}\n"
+    )
+
+
+def _rumor_text(rumors: str) -> str:
+    cleaned = rumors.strip()
+    if cleaned:
+        return cleaned
+    return (
+        "None yet. Insults and quest news become public. "
+        "A player's name, trade, gold, and inventory stay private."
     )
 
 

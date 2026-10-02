@@ -25,8 +25,13 @@
 ├── speech.py                 # 玩家姓名，以及台词清理
 ├── tools.py                  # 按 NPC 区分的赠送、收费、任务和记忆工具
 ├── session.py                # 一次访问：先行动，再说话，再保存好感度
+├── gossip.py                 # 公开传闻；私人事实仍留在各 NPC
 ├── model_factory.py          # DashScope、OpenAI 兼容、Ollama 或 mock
 ├── mock_model.py             # 供测试和离线游玩的脚本模型
+├── eval_harness.py           # 固定脚本评测，写出 Markdown 和 JSON
+├── web_demo.py               # 与命令行共用 TownSession 的浏览器界面
+├── web/index.html            # 单页，不另装前端依赖
+├── docs/web_demo.png         # mock 网页演示的截图
 ├── requirements.txt
 └── tests/                    # 离线 pytest
 ```
@@ -116,6 +121,8 @@ python main.py --provider mock --save-dir ./save
 | `/npc bram` | 改和 Bram 说话（`mira`、`rowan` 同样可用） |
 | `/npcs` | 列出居民 |
 | `/state` | 查看金币、背包、任务、好感度和上次情绪 |
+| `/gossip` | 居民之间共享的公开传闻 |
+| `/wait` | 用一段固定对白复述最新传闻 |
 | `/help` | 显示命令 |
 | `/quit` | 离开小镇 |
 
@@ -151,6 +158,55 @@ Aye, I remember you, Lira the baker.
 脚本模型只识别有限说法（自我介绍、赠礼、锤子任务、道谢、侮辱，以及
 “do you remember me”）。DashScope、OpenAI 或 Ollama 会按人设和工具自行对话。
 
+### 传闻
+
+居民把一小份公开记录写在 `save/gossip.json`。好感变化达到 -2 或更低的
+侮辱，以及任务被接受或完成的消息，会写进去，并出现在下一位居民系统
+提示的 “Town rumors” 里。玩家的姓名、职业、金币和背包留在该 NPC 自己的
+`MEMORY.md`，不会复制到这份记录。
+
+`/wait` 打印一段短对白（Mira 或 Rowan 复述最新传闻）。它不调用模型，
+因此普通说话轮次仍是两次调用。
+
+### 评测
+
+评测脚本固定 13 轮：自我介绍、赠礼、辱骂、接受任务、没有锤子却声称
+找到、领到锤子、真正完成、再次索要奖励、付费住宿、拒绝热饭、一句中文、
+新会话必须想起名字和辱骂，以及 Mira 从传闻里听到这次辱骂。结果写成
+`report.md` 和 `report.json`。
+
+离线、不需要密钥（CI 可以跑）：
+
+```bash
+python eval_harness.py --provider mock --out eval_reports
+```
+
+真实提供方（需要对应密钥，CI 不跑）：
+
+```bash
+python eval_harness.py --provider dashscope --out eval_reports
+```
+
+`--judge` 每轮多一次模型调用，按 1 到 5 给人设打分。`--provider mock`
+会跳过它，也不计入两次对话预算。脚本模型的分数包括状态是否与工具结果
+一致、跨会话记忆（下一会话系统提示里是否出现事实）、语言、互斥人设
+标记、好感符号，以及每轮调用次数、token 和延迟。脚本模型不报告用量，
+所以 token 是 0。
+
+### 网页演示
+
+与命令行共用同一个 `TownSession`，由 Python 标准库提供页面：
+
+```bash
+python web_demo.py --provider mock --port 8765
+```
+
+打开 http://127.0.0.1:8765 。页面列出居民、接收一句话，并显示金币、
+背包、任务、每位居民的好感与情绪，以及最近的传闻。**Wait** 与 `/wait`
+是同一段固定对白。
+
+![使用脚本模型的米尔黑文网页](docs/web_demo.png)
+
 ### 测试
 
 不需要 API Key：
@@ -166,3 +222,6 @@ python -m pytest tests -q
 - 工具会更新 `game_state.json` 里的背包、收费和任务进度，奖励由代码发放
 - 每轮情绪与好感度来自结构化输出，下一轮写回系统提示
 - 提供方：DashScope（默认）、OpenAI 兼容接口、Ollama，以及离线 mock
+- 公开传闻（`gossip.json`）与各 NPC 的私人记忆分开，并提供 `/wait`
+- 固定脚本评测（`eval_harness.py`），可离线或对接真实提供方
+- 浏览器演示（`web_demo.py`），与命令行同一会话，不另装 Web 依赖
