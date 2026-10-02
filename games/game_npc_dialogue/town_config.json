@@ -8,7 +8,7 @@
   "quests": {
     "lost_hammer": {
       "title": "The Lost Hammer",
-      "description": "Bram's forging hammer vanished from the smithy. Return it to finish the quest.",
+      "description": "Return Bram's forging hammer to finish the quest.",
       "status": "available",
       "progress": 0,
       "goal": 1,

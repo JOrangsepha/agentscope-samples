@@ -93,6 +93,32 @@ class TownSession:
         before_gold = self.game.gold
         npc = self.config.npc(npc_id)
         language = reply_language(player_text)
+        state = self._agent_states.setdefault(npc_id, AgentState())
+        prior = list(state.context)
+        try:
+            result = await self._talk_body(
+                npc_id,
+                npc.name,
+                player_text,
+                language,
+                before_items,
+                before_gold,
+            )
+        except Exception:
+            _drop_unfinished_turn(state, player_text, prior)
+            raise
+        return result
+
+    async def _talk_body(
+        self,
+        npc_id: str,
+        npc_name: str,
+        player_text: str,
+        language: str,
+        before_items: list[str],
+        before_gold: int,
+    ) -> TurnResult:
+        """Run one turn. The caller rolls history back if this raises."""
         actor = self._make_agent(npc_id, with_tools=True)
         await actor.reply(
             UserMsg(name=self.game.player_name, content=player_text),
@@ -131,7 +157,7 @@ class TownSession:
         result = _apply_turn(
             self.game,
             npc_id,
-            npc.name,
+            npc_name,
             message,
             player_text,
             self.memory_dir(npc_id),
@@ -145,7 +171,7 @@ class TownSession:
         record_public_events(
             self.save_dir,
             npc_id,
-            npc.name,
+            npc_name,
             delta=result.affinity_delta,
             player_text=player_text,
             quest_event=_public_quest_event(state, player_text),
@@ -224,6 +250,7 @@ class TownSession:
             player_text=player_text,
             language=language,
             hammer_status=_hammer_status(self.game),
+            hammer_place=self.game.hammer_place(),
             paid_note=paid_note,
             rumors=prompt_block(self.save_dir),
         )
@@ -521,6 +548,18 @@ def _drop_action_prose(state: AgentState, player_text: str) -> None:
         if _keep_game_tools(message)
     ]
     state.context = list(state.context[: start + 1]) + kept
+
+
+def _drop_unfinished_turn(
+    state: AgentState,
+    player_text: str,
+    prior: list,
+) -> None:
+    """Drop a player line that never received a game tool result."""
+    if _turn_has_game_tool(state, player_text):
+        _scrub_history(state)
+        return
+    state.context = list(prior)
 
 
 def _scrub_history(state: AgentState) -> None:

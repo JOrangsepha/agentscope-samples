@@ -26,8 +26,40 @@ from session import TownSession
 
 _INDEX = Path(__file__).resolve().parent / "web" / "index.html"
 _LOCK = threading.Lock()
+_LOOP_LOCK = threading.Lock()
 _SESSION: TownSession | None = None
 _NPC = "bram"
+_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def ensure_loop() -> asyncio.AbstractEventLoop:
+    """One loop for every request, so client connections stay open."""
+    global _LOOP
+    with _LOOP_LOCK:
+        if _LOOP is not None and not _LOOP.is_closed():
+            return _LOOP
+        loop = asyncio.new_event_loop()
+        ready = threading.Event()
+
+        def _spin() -> None:
+            asyncio.set_event_loop(loop)
+            ready.set()
+            loop.run_forever()
+
+        threading.Thread(
+            target=_spin,
+            name="millhaven-loop",
+            daemon=True,
+        ).start()
+        ready.wait()
+        _LOOP = loop
+        return loop
+
+
+def _run(coro):
+    """Run ``coro`` on the shared loop and return its result."""
+    future = asyncio.run_coroutine_threadsafe(coro, ensure_loop())
+    return future.result()
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +80,7 @@ def build_session(
 ) -> None:
     """Create the process-wide session used by every request."""
     global _SESSION
+    ensure_loop()
     config = load_town_config()
     model = build_chat_model(provider, model_name)
     _SESSION = TownSession(config, save_dir, model)
@@ -98,6 +131,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # pylint: disable=invalid-name
         """Serve the page or the current ledger."""
+        try:
+            self._get()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self._send_error(exc)
+
+    def _get(self) -> None:
+        """Pages and the ledger."""
         if self.path.split("?", 1)[0] in {"/", "/index.html"}:
             body = _INDEX.read_bytes()
             self._send(200, "text/html; charset=utf-8", body)
@@ -109,6 +149,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # pylint: disable=invalid-name
         """Talk, or let the town repeat a rumor."""
+        try:
+            self._post()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self._send_error(exc)
+
+    def _post(self) -> None:
+        """Talk and wait endpoints."""
         path = self.path.split("?", 1)[0]
         payload = self._read_json()
         if path == "/api/talk":
@@ -138,9 +185,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_json(self, payload: dict) -> None:
+    def _send_json(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
-        self._send(200, "application/json; charset=utf-8", body)
+        self._send(status, "application/json; charset=utf-8", body)
+
+    def _send_error(self, exc: BaseException) -> None:
+        self._send_json({"error": str(exc)}, status=500)
 
 
 def _talk(payload: dict) -> dict:
@@ -154,7 +204,7 @@ def _talk(payload: dict) -> dict:
     if not text:
         return {"turn": None, "state": state_payload()}
     with _LOCK:
-        result = asyncio.run(_SESSION.talk(npc_id, text))
+        result = _run(_SESSION.talk(npc_id, text))
     return {
         "turn": {
             "npc_name": result.npc_name,

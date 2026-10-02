@@ -35,24 +35,43 @@ _TOOL_HELP = {
 }
 
 
-def hammer_fact(status: str) -> str:
-    """Describe the hammer from the live quest status."""
-    if status == "completed":
+def hammer_fact(status: str, place: str = "") -> str:
+    """Describe the hammer from the quest status and where it is now.
+
+    ``place`` is ``lost``, ``with_mira``, ``carried``, or ``returned``.
+    An empty place is inferred from ``status`` alone.
+    """
+    where = place or _place_for_status(status)
+    if where == "returned" or status == "completed":
         return (
             "The hammer was returned; the quest is completed. "
             "Do not say the hammer is still lost or was never lost."
         )
-    if status == "accepted":
+    if where == "carried":
         return (
-            "Bram's forging hammer is still missing. The quest is "
-            "accepted and is not completed yet. "
-            "Do not say the hammer was never lost."
+            "The player is carrying the forging hammer. "
+            "If they hand it over, call complete_quest. "
+            "Do not call the hammer missing."
+        )
+    if where == "with_mira":
+        return (
+            "Mira is holding Bram's forging hammer and can give it. "
+            "The quest is accepted and is not completed. "
+            "Do not call the hammer missing."
         )
     return (
         "Bram lost his forging hammer. The quest is not completed, "
         "so the hammer is still lost. "
         "Do not say the hammer was never lost."
     )
+
+
+def _place_for_status(status: str) -> str:
+    if status == "completed":
+        return "returned"
+    if status == "accepted":
+        return "with_mira"
+    return "lost"
 
 
 def affinity_tone(affinity: int) -> str:
@@ -79,6 +98,7 @@ def build_system_prompt(
     player_text: str = "",
     language: str = "",
     hammer_status: str = "available",
+    hammer_place: str = "",
     paid_note: str = "",
     rumors: str = "",
 ) -> str:
@@ -109,7 +129,7 @@ def build_system_prompt(
         "# Town rumors\n"
         f"{_rumor_text(rumors)}\n\n"
         "# Facts\n"
-        f"{hammer_fact(hammer_status)}\n"
+        f"{hammer_fact(hammer_status, hammer_place)}\n"
         "Do not assign the player's trade to another resident.\n"
         "Give only items listed under stock.\n\n"
     )
@@ -119,11 +139,12 @@ def build_system_prompt(
     return (
         head + "# Action\n"
         "Call one tool. This phase does not speak to the player.\n"
-        "Small talk, greetings, and questions about what you remember "
-        'must call no_action. Example: "What is my name?" -> '
-        "no_action.\n"
+        "Small talk, greetings, and questions about memory change "
+        "nothing. Use the no_action tool for them. "
+        "A question about the player's name is one of those turns. "
+        "Do not write the tool name as a sentence.\n"
         "If gold, items, quests, and memory should stay unchanged, "
-        "call no_action.\n"
+        "use the no_action tool.\n"
         "Do not write a spoken line. A sentence cannot give an item "
         "or take gold.\n\n"
         "# Tools\n"

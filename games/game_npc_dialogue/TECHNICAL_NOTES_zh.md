@@ -101,7 +101,7 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **32 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **33 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）
@@ -114,8 +114,10 @@ python -m pytest tests -q
   送出物品或收钱、中文分句和引号分句、收费成功后的 “here you go” /
   “给你” 不再被当成假赠送、任务工具返回 already/cannot 时好感不能上升
   （`test_live_fixes.py`）
-- 侮辱和任务进展进入公开传闻，姓名和职业不进入；`/wait` 复述最新传闻
-  （`test_gossip.py`）
+- 侮辱写成 “The player told Bram: …”，姓名和职业不进入；被问到消息时
+  台词复述传闻；`/wait` 复述最新传闻（`test_gossip.py`）
+- 网页连续两次说话仍用同一个事件循环；模型抛错时返回 JSON 500，且
+  失败的那句玩家台词不留在历史里（`test_web.py`）
 - 固定脚本评测在 mock 上状态、记忆、语言、人设、好感均为 1.0，且每轮
   2 次调用（`test_eval.py`）
 - 网页返回页面和账本，说话与等待走同一 `TownSession`（`test_web.py`）
@@ -311,24 +313,60 @@ DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没�
 3. “米拉，能给我一条黑面包吗？” 得到了英文。玩家原句要求中文、而回复里
    没有汉字时，说话步骤会再生成一次。
 
+### 第六轮（qwen-plus，commit 0e8a016）
+
+同一份 13 轮评测跑了 3 次（不加 `--judge`）加 1 次带裁判。四次准确率相同：
+状态 61.5%，记忆 100%，语言 100%，人设 100%，好感 76.9%，约 2.05 次调用/轮，
+输入约 32.8k、输出约 1.65k，平均 4.52 秒。其中一份报告是状态 62%（8/13）、
+好感 77%（10/13）、2.00 次/轮、输入 31825、输出 1615、平均 4.386 秒、最大
+5.295 秒。`--judge` 为 10/13 至少 3 分。27 轮手工脚本里 `ACT_NOW` 补救
+升到 8 次。第五轮已修好的收费、礼貌提问和好感、中文重试仍然成立。
+
+这一轮的改动：
+
+1. 主线任务在实机里完不成。玩家拿着锻造锤去找 Rowan 时，他调用
+   `no_action`，理由是玩家没有锤子；Mira 也说锤子还丢着，不肯交出。
+   原因是进行中的事实写着 “still missing”，和 Mira 的库存、玩家背包矛盾。
+   事实现在同时看任务状态和锤子位置：还在丢失、在 Mira 手里、在玩家背包、
+   已经交还。背包里有锤子时写明 “call complete_quest”。任务说明也不再写
+   “vanished”。
+2. 网页 `POST /api/talk` 大约隔一次就 `RuntimeError: Event loop is closed`。
+   每次 `asyncio.run` 都会关掉循环，DashScope 客户端的连接还绑在旧循环上。
+   现在所有请求共用一条后台事件循环（`run_coroutine_threadsafe`）。
+   处理函数把异常收成 JSON 500。失败的回合如果还没有游戏工具结果，会把
+   玩家那句话从历史里拿掉。
+3. “my name is Kestrel. Could you give me a horseshoe?” 被解析成
+   “Kestrel Could You”。名字在句号、问号、感叹号处截断。
+4. 补救变多，是因为模型把提示里的 `-> no_action` 例子写成纯文本。
+   行动提示改成说明该用哪个工具，不再给出可照抄的句子。
+5. 传闻 “Bram finds the player rude. They said: …” 听起来像 Bram 骂了玩家。
+   现在写成 “The player told Bram: '…'”。玩家打听消息时，提示要求复述
+   相关传闻。
+6. 评测好感与提示对齐：自我介绍期望 0（只有赠送、成功收费、接受或完成
+   任务才加分）；成功收费期望为正。每一轮只检查自己造成的变化，不再用
+   前面失败留下的金币总数判后面的轮次。记忆、传闻是否被听见，都看台词
+   本身。人设分看台词有没有串别人的专有标记。裁判能看到回合结束后的
+   游戏状态，看不到工具轨迹；报告里写明了这个限度。
+
 ## 评测方法与离线结果
 
 `eval_harness.py` 用同一份 `TownSession.talk()`，不另写一套对话逻辑。
 脚本固定 13 轮，顺序是：向 Bram 自报姓名与职业、要马掌、辱骂、向 Rowan
 接受任务、没有锤子时声称已找到、向 Mira 领取锻造锤、交还锤子并领 8 枚
 金币、再次索要奖励、向 Mira 支付床位、要求热饭（应拒绝）、一句中文、
-新进程里问 Bram 是否记得自己、再向 Mira 问好以确认传闻已进入系统提示。
+新进程里问 Bram 是否记得自己（台词里要点出名字和辱骂）、再问 Mira
+有什么消息（台词里要引用 “The player told Bram”）。
 
-指标都按这一份脚本计算：
+指标都按这一份脚本计算，报告正文也写了同一套定义：
 
 | 指标 | 怎么判 |
 | --- | --- |
-| 状态正确率 | 该轮结束后的金币、姓名、任务状态、背包与脚本期望一致，因此口头说法和工具结果必须落到同一份 `game_state` |
-| 记忆召回率 | 只统计标了 `recall_system_has` 的轮次。新会话的系统提示必须同时含有 “Kestrel” 和 “stupid thief”；Mira 的系统提示必须含有 “finds the player rude” |
+| 状态正确率 | 只看这一轮自己的效果：金币增减、本轮获得或失去的物品、本轮设定或保持不变的任务状态、玩家姓名。前面一轮没完成，不会因为金币总数对不上而判后面的轮次失败 |
+| 记忆召回率 | 台词里要出现记住的事实（Kestrel、stupid thief）。只出现在系统提示里不算 |
 | 语言一致率 | `reply_language(reply)` 与玩家原句的语言相同 |
-| 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 Oak and Lantern、Rowan 的 town council）。`--judge` 另用模型按 1–5 打分，3 分及以上算过；mock 跳过，且这次调用不计入对话预算 |
-| 好感合理性 | 该轮 `affinity_delta` 的符号符合脚本（正、负、零或非负） |
-| 调用 / token / 延迟 | 包装 `ChatModel._call_api`，按轮汇总次数、输入输出 token 和墙钟时间 |
+| 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 Oak and Lantern、Rowan 的 town council）。这不是文风打分。`--judge` 另按 1–5 打分，能看到回合结束后的游戏状态，看不到工具轨迹，所以一句和最终状态碰巧相符的台词仍可能得高分。3 分及以上算过。mock 跳过，且这次调用不计入每轮调用 |
+| 好感合理性 | 符号要符合提示：赠送、成功收费、接受或完成任务才期望为正。自我介绍、提问、拒绝的服务、重复领奖期望为 0。辱骂期望为负 |
+| 调用 / token / 延迟 | 包装 `ChatModel._call_api`，按轮汇总对话调用。裁判调用不计入 |
 
 离线命令：
 
@@ -349,18 +387,21 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.020 秒 / 0.062 秒 |
+| 平均 / 最大延迟 | 0.021 秒 / 0.074 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
-DashScope 实机评测和 `--judge` 没有跑。
+上面的第六轮是改指标之前的实机数。这一版改过锤子事实、好感期望和
+逐轮计分之后，还没有再跑 DashScope。
 
 ## 传闻
 
 `gossip.py` 在 `talk()` 应用好感之后写 `save/gossip.json`，不增加模型
 调用。公开的只有两类：`affinity_delta <= -2` 的侮辱，以及任务被接受或
-完成。姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
-“Town rumors” 一节；没有传闻时写明哪些会公开、哪些保持私人。`/wait`
+完成。侮辱写成 “The player told Bram: '…'”，避免听成 Bram 在骂人。
+姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
+“Town rumors” 一节；没有传闻时写明哪些会公开、哪些保持私人。有传闻时
+要求：玩家打听消息或别人怎么说，就复述相关的几行。`/wait`
 和网页上的 Wait 调用 `narrate_wait`：由 Mira 或 Rowan 用固定句子复述
 最新一条公开传闻，并记一条 `exchange`。这段对白不进入模型。
 
@@ -377,6 +418,8 @@ DashScope 实机评测和 `--judge` 没有跑。
 
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
-- 用 `python eval_harness.py --provider dashscope --judge` 给同一份 13 轮
-  脚本留下实机分数。网页也可以换成 `--provider dashscope`。
+- 用这一版再跑 `python eval_harness.py --provider dashscope`，以及加上
+  `--judge`。网页用真实提供方连续发几次 `POST /api/talk`，确认不再出现
+  `Event loop is closed`，并且 Rowan 在玩家带着锻造锤时会调用
+  `complete_quest`。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

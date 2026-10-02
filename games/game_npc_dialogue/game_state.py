@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from npc_config import QuestSpec, TownConfig
+from prompts import hammer_fact
 
 _AFFINITY_MIN = -100
 _AFFINITY_MAX = 100
@@ -224,6 +225,18 @@ class GameState:
             f"The {rule.required_item or 'proof'} was turned in.{paid}"
         )
 
+    def hammer_place(self) -> str:
+        """Where the forging hammer is right now."""
+        quest = self.data.get("quests", {}).get("lost_hammer", {})
+        status = str(quest.get("status") or "available")
+        if status == "completed":
+            return "returned"
+        if "forging hammer" in self.inventory:
+            return "carried"
+        if status == "accepted":
+            return "with_mira"
+        return "lost"
+
     def describe(self) -> str:
         """Multi-line snapshot embedded in an NPC system prompt."""
         items = ", ".join(self.inventory) or "(empty)"
@@ -234,6 +247,11 @@ class GameState:
             "Quests:",
         ]
         lines.extend(self._quest_lines())
+        status = str(
+            self.data.get("quests", {}).get("lost_hammer", {}).get("status")
+            or "available",
+        )
+        lines.append(hammer_fact(status, self.hammer_place()))
         return "\n".join(lines)
 
     def describe_for_player(self) -> str:

@@ -135,10 +135,10 @@ python main.py --provider mock --save-dir ./save
 Welcome to Millhaven.
 Model: scripted-npc. Save: ./save. You are speaking with Bram, the blacksmith.
 You (Bram)> Hello, my name is Lira and I bake bread.
-[Bram | grateful | affinity 2 (+2)]
+[Bram | neutral | affinity 0 (+0)]
 Lira, is it? I will remember a baker.
 You (Bram)> Please give me a horseshoe.
-[Bram | warm | affinity 3 (+1)]
+[Bram | warm | affinity 1 (+1)]
 Take the horseshoe. Do not waste good work.
 You (Bram)> /npc rowan
 You walk over to Rowan, the elder.
@@ -151,7 +151,7 @@ The Lost Hammer is yours. Bring it back to Millhaven.
 
 ```text
 You (Bram)> Do you remember me?
-[Bram | warm | affinity 4 (+1)]
+[Bram | warm | affinity 2 (+1)]
 Aye, I remember you, Lira the baker.
 ```
 
@@ -172,8 +172,8 @@ Aye, I remember you, Lira the baker.
 
 评测脚本固定 13 轮：自我介绍、赠礼、辱骂、接受任务、没有锤子却声称
 找到、领到锤子、真正完成、再次索要奖励、付费住宿、拒绝热饭、一句中文、
-新会话必须想起名字和辱骂，以及 Mira 从传闻里听到这次辱骂。结果写成
-`report.md` 和 `report.json`。
+新会话的台词必须用上名字和辱骂，以及向 Mira 打听消息时台词必须引用
+传闻。结果写成 `report.md` 和 `report.json`。
 
 离线、不需要密钥（CI 可以跑）：
 
@@ -187,15 +187,16 @@ python eval_harness.py --provider mock --out eval_reports
 python eval_harness.py --provider dashscope --out eval_reports
 ```
 
-`--judge` 每轮多一次模型调用，按 1 到 5 给人设打分。`--provider mock`
-会跳过它，也不计入两次对话预算。脚本模型的分数包括状态是否与工具结果
-一致、跨会话记忆（下一会话系统提示里是否出现事实）、语言、互斥人设
-标记、好感符号，以及每轮调用次数、token 和延迟。脚本模型不报告用量，
-所以 token 是 0。
+`--judge` 每轮多一次模型调用，按 1 到 5 给人设打分。它能看到回合结束
+后的游戏状态，看不到工具轨迹。`--provider mock` 会跳过它，也不计入
+两次对话预算。报告写明每个指标量什么。状态只看这一轮自己的效果。
+记忆和传闻要出现在台词里。人设检查台词没有串用别人的标记。只有赠送、
+成功收费、接受或完成任务才期望好感上升。脚本模型不报告用量，token 是 0。
 
 ### 网页演示
 
-与命令行共用同一个 `TownSession`，由 Python 标准库提供页面：
+与命令行共用同一个 `TownSession`，由 Python 标准库提供页面。
+所有请求共用一条后台事件循环：
 
 ```bash
 python web_demo.py --provider mock --port 8765

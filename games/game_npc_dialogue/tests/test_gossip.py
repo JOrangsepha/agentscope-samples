@@ -15,14 +15,20 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
     asyncio.run(session.talk("bram", "You are a stupid thief."))
     gossip = (tmp_path / "gossip.json").read_text(encoding="utf-8")
-    assert "finds the player rude" in gossip
+    assert "The player told Bram:" in gossip
     assert "stupid thief" in gossip
+    assert "finds the player rude" not in gossip
     assert "traveling" not in gossip
 
     other = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
-    asyncio.run(other.talk("mira", "Hello."))
+    news = asyncio.run(
+        other.talk("mira", "What news have you heard about me?"),
+    )
+    assert "The player told Bram" in news.reply
+    assert "stupid thief" in news.reply
     system = other.model.calls[0]["system"]
-    assert "finds the player rude" in system
+    assert "The player told Bram" in system
+    assert "asks for news" in system
     private = (session.memory_dir("bram") / "MEMORY.md").read_text(
         encoding="utf-8",
     )
@@ -30,7 +36,7 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
 
     exchange = other.wait_in_town()
     assert "Mira tells" in exchange
-    assert "finds the player rude" in exchange
+    assert "The player told Bram" in exchange
     again = (tmp_path / "gossip.json").read_text(encoding="utf-8")
     assert "exchange" in again
 

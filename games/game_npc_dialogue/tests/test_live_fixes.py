@@ -160,7 +160,9 @@ def test_language_is_chosen_from_the_player_line() -> None:
         affinity=5,
         emotion="warm",
     )
-    assert 'Example: "What is my name?" -> no_action.' in action
+    assert "-> no_action" not in action
+    assert "no_action tool" in action
+    assert "Do not write the tool name as a sentence." in action
     assert "adjust_gold" not in chinese
     assert "update_quest" not in chinese
     english = build_system_prompt(
@@ -182,6 +184,10 @@ def test_player_name_updates_from_an_introduction(tmp_path: Path) -> None:
     assert learn_player_name("I'm a traveling carpenter.") is None
     assert learn_player_name("My name is Kestrel.") == "Kestrel"
     assert learn_player_name("My name is Mary Ann.") == "Mary Ann"
+    asked = "my name is Kestrel. Could you give me a horseshoe?"
+    assert learn_player_name(asked) == "Kestrel"
+    nice = "My name is Kestrel. Nice to meet you."
+    assert learn_player_name(nice) == "Kestrel"
     assert learn_player_name("My name is not important") is None
     assert learn_player_name("我叫Kestrel") == "Kestrel"
     assert learn_player_name("你还记得我叫什么吗？") is None
@@ -465,8 +471,13 @@ def test_a_failed_quest_call_cannot_raise_affinity(tmp_path: Path) -> None:
 
 
 def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
-    """After completion the prompt says the hammer was returned."""
+    """The fact follows the quest and where the hammer is."""
     assert "still lost" in hammer_fact("available")
+    assert "Mira is holding" in hammer_fact("accepted")
+    assert "still missing" not in hammer_fact("accepted")
+    carried = hammer_fact("accepted", "carried")
+    assert "carrying the forging hammer" in carried
+    assert "complete_quest" in carried
     assert "was returned" in hammer_fact("completed")
     assert "stays lost" not in hammer_fact("completed")
     session, model = _session(tmp_path)
@@ -474,7 +485,17 @@ def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
     assert "still lost" in model.calls[0]["system"]
     assert "polite question is never rudeness" in model.calls[0]["system"]
     asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    model.calls.clear()
+    asyncio.run(session.talk("mira", "Hello."))
+    held = model.calls[0]["system"]
+    assert "Mira is holding" in held
+    assert "still missing" not in held
     asyncio.run(session.talk("mira", "Please give me a forging hammer."))
+    model.calls.clear()
+    asyncio.run(session.talk("rowan", "Hello."))
+    packed = model.calls[0]["system"]
+    assert "carrying the forging hammer" in packed
+    assert "complete_quest" in packed
     asyncio.run(session.talk("rowan", "I found the hammer. Here it is."))
     model.calls.clear()
     asyncio.run(session.talk("bram", "Hello."))

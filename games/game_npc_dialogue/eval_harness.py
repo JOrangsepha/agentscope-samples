@@ -47,9 +47,9 @@ def scenario_steps() -> list[dict]:
                 "carpenter from the coast."
             ),
             "language": "English",
-            "delta": "pos",
+            "delta": "zero",
             "player_name": "Kestrel",
-            "gold": 12,
+            "gold_delta": 0,
             "memory_has": "The player's name is Kestrel.",
         },
         {
@@ -58,8 +58,8 @@ def scenario_steps() -> list[dict]:
             "text": "Please give me a horseshoe.",
             "language": "English",
             "delta": "pos",
-            "gold": 12,
-            "has_items": ["horseshoe"],
+            "gold_delta": 0,
+            "gained_items": ["horseshoe"],
         },
         {
             "id": "rudeness",
@@ -67,9 +67,9 @@ def scenario_steps() -> list[dict]:
             "text": "You are a stupid thief.",
             "language": "English",
             "delta": "neg",
-            "gold": 12,
+            "gold_delta": 0,
             "memory_has": "stupid thief",
-            "gossip_has": "finds the player rude",
+            "gossip_has": "The player told Bram",
         },
         {
             "id": "quest_accept",
@@ -77,7 +77,7 @@ def scenario_steps() -> list[dict]:
             "text": "I accept the lost hammer quest.",
             "language": "English",
             "delta": "pos",
-            "gold": 12,
+            "gold_delta": 0,
             "quest": "accepted",
             "gossip_has": "accepted The Lost Hammer",
         },
@@ -87,9 +87,9 @@ def scenario_steps() -> list[dict]:
             "text": "I found the hammer. Here it is.",
             "language": "English",
             "delta": "zero",
-            "gold": 12,
-            "quest": "accepted",
-            "lacks_items": ["forging hammer"],
+            "gold_delta": 0,
+            "quest_same": True,
+            "not_gained": ["forging hammer"],
         },
         {
             "id": "quest_item",
@@ -97,9 +97,8 @@ def scenario_steps() -> list[dict]:
             "text": "Please give me a forging hammer.",
             "language": "English",
             "delta": "pos",
-            "gold": 12,
-            "has_items": ["forging hammer"],
-            "quest": "accepted",
+            "gold_delta": 0,
+            "gained_items": ["forging hammer"],
         },
         {
             "id": "quest_legit",
@@ -107,9 +106,9 @@ def scenario_steps() -> list[dict]:
             "text": "I found the hammer. Here it is.",
             "language": "English",
             "delta": "pos",
-            "gold": 20,
+            "gold_delta": 8,
             "quest": "completed",
-            "lacks_items": ["forging hammer"],
+            "lost_items": ["forging hammer"],
             "gossip_has": "completed The Lost Hammer",
         },
         {
@@ -118,16 +117,16 @@ def scenario_steps() -> list[dict]:
             "text": "Thank you for the reward for the hammer.",
             "language": "English",
             "delta": "zero",
-            "gold": 20,
-            "quest": "completed",
+            "gold_delta": 0,
+            "quest_same": True,
         },
         {
             "id": "paid_service",
             "npc": "mira",
             "text": "Please charge me 3 gold for a bed.",
             "language": "English",
-            "delta": "zero",
-            "gold": 17,
+            "delta": "pos",
+            "gold_delta": -3,
         },
         {
             "id": "refused_service",
@@ -135,7 +134,7 @@ def scenario_steps() -> list[dict]:
             "text": "Please charge me 2 gold for a hot meal.",
             "language": "English",
             "delta": "zero",
-            "gold": 17,
+            "gold_delta": 0,
         },
         {
             "id": "language_zh",
@@ -143,7 +142,7 @@ def scenario_steps() -> list[dict]:
             "text": "你好米拉",
             "language": "Simplified Chinese",
             "delta": "zero",
-            "gold": 17,
+            "gold_delta": 0,
         },
         {
             "id": "memory_recall",
@@ -152,15 +151,15 @@ def scenario_steps() -> list[dict]:
             "text": "Do you remember me?",
             "language": "English",
             "delta": "nonneg",
-            "recall_system_has": ["Kestrel", "stupid thief"],
+            "reply_has": ["Kestrel", "stupid thief"],
         },
         {
             "id": "gossip_heard",
             "npc": "mira",
-            "text": "Hello.",
+            "text": "What news have you heard about me?",
             "language": "English",
             "delta": "zero",
-            "recall_system_has": ["finds the player rude"],
+            "reply_has": ["The player told Bram", "stupid thief"],
         },
     ]
 
@@ -179,13 +178,21 @@ async def run_eval(
     for step in scenario_steps():
         if step.get("new_session"):
             session = TownSession(config, save_dir, model)
-        before = len(meter)
+        before_len = len(meter)
+        before_state = _snapshot(session)
         started = time.perf_counter()
         result = await session.talk(step["npc"], step["text"])
         elapsed = time.perf_counter() - started
-        calls = meter[before:]
+        calls = meter[before_len:]
         details.append(
-            _score_step(step, result, session, calls, elapsed),
+            _score_step(
+                step,
+                result,
+                session,
+                calls,
+                elapsed,
+                before_state,
+            ),
         )
     judge_note = "skipped"
     if judge:
@@ -300,16 +307,27 @@ def _system_text(messages: list) -> str:
     return "\n".join(parts)
 
 
-def _score_step(step, result, session, calls, elapsed) -> dict:
+def _snapshot(session: TownSession) -> dict:
+    quests = session.game.data.get("quests", {})
+    status = str(quests.get("lost_hammer", {}).get("status") or "")
+    return {
+        "gold": session.game.gold,
+        "inventory": list(session.game.inventory),
+        "quest": status,
+    }
+
+
+def _score_step(step, result, session, calls, elapsed, before) -> dict:
     checks = {
-        "state": _state_ok(step, session),
+        "state": _state_ok(step, session, before),
         "language": reply_language(result.reply) == step["language"],
         "affinity": _delta_ok(result.affinity_delta, step.get("delta")),
         "persona": _persona_ok(step["npc"], result.reply),
     }
-    recall_bits = step.get("recall_system_has") or []
-    system = calls[0]["system"] if calls else ""
-    recall = all(bit in system for bit in recall_bits) if recall_bits else None
+    reply_bits = step.get("reply_has") or []
+    recall = (
+        all(bit in result.reply for bit in reply_bits) if reply_bits else None
+    )
     memory_bit = step.get("memory_has")
     if memory_bit:
         stored = _memory_text(session, step["npc"])
@@ -330,27 +348,32 @@ def _score_step(step, result, session, calls, elapsed) -> dict:
         "input_tokens": sum(item["input_tokens"] for item in calls),
         "output_tokens": sum(item["output_tokens"] for item in calls),
         "latency_s": round(elapsed, 4),
+        "game_state": session.game.describe(),
     }
 
 
-def _state_ok(step, session) -> bool:
+def _state_ok(step, session, before: dict) -> bool:
+    """Score this turn's own effect, not the gold total from earlier turns."""
     game = session.game
-    if "gold" in step and game.gold != step["gold"]:
-        return False
-    if "player_name" in step and game.player_name != step["player_name"]:
-        return False
+    status = game.data["quests"]["lost_hammer"]["status"]
+    inventory = list(game.inventory)
+    previous = list(before["inventory"])
+    checks = []
+    if "gold_delta" in step:
+        checks.append(game.gold - before["gold"] == step["gold_delta"])
+    if "player_name" in step:
+        checks.append(game.player_name == step["player_name"])
     if "quest" in step:
-        status = game.data["quests"]["lost_hammer"]["status"]
-        if status != step["quest"]:
-            return False
-    inventory = game.inventory
-    for item in step.get("has_items", []):
-        if item not in inventory:
-            return False
-    for item in step.get("lacks_items", []):
-        if item in inventory:
-            return False
-    return True
+        checks.append(status == step["quest"])
+    if step.get("quest_same"):
+        checks.append(status == before["quest"])
+    for item in step.get("gained_items", []):
+        checks.append(item in inventory and item not in previous)
+    for item in step.get("lost_items", []):
+        checks.append(item not in inventory and item in previous)
+    for item in step.get("not_gained", []):
+        checks.append(item not in inventory or item in previous)
+    return all(checks)
 
 
 def _delta_ok(delta: int, rule: str | None) -> bool:
@@ -442,6 +465,7 @@ async def _run_judge(model, details, config) -> str:
             npc.persona,
             item["player"],
             item["reply"],
+            item.get("game_state", ""),
         )
         item["judge_score"] = score
         if score is not None:
@@ -452,15 +476,28 @@ async def _run_judge(model, details, config) -> str:
     return f"{passed}/{len(scores)} scored at least 3"
 
 
-async def _judge_one(model, name, persona, player, reply) -> int | None:
-    """One rubric call. Not used on the mock path."""
+async def _judge_one(
+    model,
+    name,
+    persona,
+    player,
+    reply,
+    game_state: str,
+) -> int | None:
+    """One rubric call. Not used on the mock path.
+
+    The judge sees the reply and the state after the turn. It does not
+    see the tool trace, so a fluent line that happens to match the final
+    state can still score high.
+    """
     system = SystemMsg(
         name="judge",
         content=(
             "You score NPC dialogue. Reply with one integer from 1 to 5. "
             "5 means the reply matches the persona and does not invent "
-            "inventory, gold, or quest results. 1 means it contradicts "
-            "the persona or invents game state."
+            "inventory, gold, or quest results beyond the game state. "
+            "1 means it contradicts the persona or invents game state. "
+            "You see the state after the turn, not the tool trace."
         ),
     )
     user = UserMsg(
@@ -468,7 +505,8 @@ async def _judge_one(model, name, persona, player, reply) -> int | None:
         content=(
             f"NPC {name}. Persona: {persona}\n"
             f"Player: {player}\n"
-            f"Reply: {reply}"
+            f"Reply: {reply}\n"
+            f"Game state after the turn:\n{game_state}"
         ),
     )
     response = await model._call_api(  # pylint: disable=protected-access
@@ -502,6 +540,32 @@ def _markdown(report: dict) -> str:
         f"Model: {report['model']}. Turns: {report['turns']}. "
         f"Judge: {report['judge']}.",
         "",
+        "## What each metric measures",
+        "",
+        "State correctness: this turn's own effect (gold change, items "
+        "gained or lost, quest status this step set or left unchanged, "
+        "player name). A later turn is not failed because an earlier "
+        "turn left the gold total wrong.",
+        "",
+        "Memory recall: the spoken reply contains the remembered facts. "
+        "A fact that is only in the system prompt does not count.",
+        "",
+        "Language match: the reply language equals the player's language.",
+        "",
+        "Persona consistency: the reply does not contain another "
+        "resident's exclusive marker. This check does not grade style. "
+        "`--judge` is a separate 1-5 call with the persona and the game "
+        "state after the turn. It does not see the tool trace, and its "
+        "calls are not part of calls per turn.",
+        "",
+        "Affinity sanity: the sign of affinity_delta. Positive only "
+        "after a gift, a successful charge, or a quest accepted or "
+        "completed. An introduction, a question, a refused service, "
+        "and a repeat reward expect 0.",
+        "",
+        "Calls, tokens, and latency are metered on each dialogue "
+        "model call. Mock token counts stay 0.",
+        "",
         "| metric | value |",
         "| --- | --- |",
         f"| state correctness | {metrics['state_correctness']:.0%} |",
@@ -515,7 +579,7 @@ def _markdown(report: dict) -> str:
         f"| avg turn latency s | {metrics['latency_s_avg']:.3f} |",
         f"| max turn latency s | {metrics['latency_s_max']:.3f} |",
         "",
-        "| turn | calls | gold check | language | affinity | recall |",
+        "| turn | calls | state | language | affinity | recall |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
     for item in report["turns_detail"]:

@@ -427,6 +427,7 @@ def _choose_reply(
     matchers = (
         _paid_reply,
         _recalled_reply,
+        _news_reply,
         _introduction_reply,
         _rude_reply,
         _hammer_reply,
@@ -470,7 +471,7 @@ def _paid_reply(
     return (
         f"Here you go. That covers the {reason}.",
         "warm",
-        0,
+        1,
         "The player paid for a service.",
     )
 
@@ -481,14 +482,68 @@ def _recalled_reply(
     tool_text: str,
 ) -> tuple[str, str, int, str] | None:
     del tool_text
-    if "lira" in system.lower() and "remember" in user_l:
+    if "remember" not in user_l:
+        return None
+    lowered = system.lower()
+    if "lira" in lowered:
         return (
             "Aye, I remember you, Lira the baker.",
             "warm",
             1,
             "The player returned and I recalled their name.",
         )
-    return None
+    bits = []
+    if "kestrel" in lowered:
+        bits.append("Kestrel")
+    if "stupid thief" in lowered:
+        bits.append("you said stupid thief")
+    if not bits:
+        return None
+    return (
+        "Aye, I remember you. " + " ".join(bits) + ".",
+        "warm",
+        0,
+        "Recalled a stored fact in the reply.",
+    )
+
+
+def _news_reply(
+    system: str,
+    user_l: str,
+    tool_text: str,
+) -> tuple[str, str, int, str] | None:
+    """Repeat a public rumor when the player asks for news."""
+    del tool_text
+    asked = any(
+        phrase in user_l
+        for phrase in ("news", "rumor", "what do people", "what people say")
+    )
+    if not asked:
+        return None
+    rumors = _rumor_lines(system)
+    if not rumors:
+        return ("I have heard no town rumor.", "neutral", 0, "No rumor.")
+    heard = " ".join(rumors[:2])
+    return (
+        f"I heard this: {heard}",
+        "neutral",
+        0,
+        "Shared a public rumor.",
+    )
+
+
+def _rumor_lines(system: str) -> list[str]:
+    lines = []
+    in_rumors = False
+    for line in system.splitlines():
+        if line.startswith("# Town rumors"):
+            in_rumors = True
+            continue
+        if in_rumors and line.startswith("# "):
+            break
+        if in_rumors and line.startswith("- "):
+            lines.append(line[2:].strip())
+    return lines
 
 
 def _introduction_reply(
@@ -502,8 +557,8 @@ def _introduction_reply(
         return None
     return (
         _name_reply(learned, user_l),
-        "grateful",
-        2,
+        "neutral",
+        0,
         "The player shared their name.",
     )
 

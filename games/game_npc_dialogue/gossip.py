@@ -50,8 +50,11 @@ def prompt_block(save_dir: str | Path) -> str:
     joined = "\n".join(f"- {line}" for line in lines if line)
     return (
         f"{joined}\n"
-        "Only these lines are shared. Do not invent a rumor, and do "
-        "not repeat private memory."
+        "Each line is what the player told that resident, or a quest "
+        "event. It is not that resident insulting the player. "
+        "When the player asks for news or what people say, share the "
+        "relevant lines. Do not invent a rumor, and do not repeat "
+        "private memory."
     )
 
 
@@ -72,7 +75,7 @@ def record_public_events(
             source_id,
             source_name,
             "insult",
-            f"{source_name} finds the player rude. They said: {said}",
+            f"The player told {source_name}: '{said}'.",
         )
     if quest_event == "accepted":
         _append(

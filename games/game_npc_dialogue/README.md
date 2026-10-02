@@ -144,10 +144,10 @@ Example visit with `--provider mock` (player lines are what you type):
 Welcome to Millhaven.
 Model: scripted-npc. Save: ./save. You are speaking with Bram, the blacksmith.
 You (Bram)> Hello, my name is Lira and I bake bread.
-[Bram | grateful | affinity 2 (+2)]
+[Bram | neutral | affinity 0 (+0)]
 Lira, is it? I will remember a baker.
 You (Bram)> Please give me a horseshoe.
-[Bram | warm | affinity 3 (+1)]
+[Bram | warm | affinity 1 (+1)]
 Take the horseshoe. Do not waste good work.
 You (Bram)> /npc rowan
 You walk over to Rowan, the elder.
@@ -160,7 +160,7 @@ Quit, start the program again on the same save, and Bram still knows Lira:
 
 ```text
 You (Bram)> Do you remember me?
-[Bram | warm | affinity 4 (+1)]
+[Bram | warm | affinity 2 (+1)]
 Aye, I remember you, Lira the baker.
 ```
 
@@ -184,8 +184,9 @@ It does not call the model, so a normal spoken turn stays at two calls.
 The harness plays a fixed 13-turn script: introduction, gift, rudeness,
 quest accept, a claim with no hammer, receiving the hammer, a real
 completion, a repeat reward, a paid bed, a refused hot meal, a Chinese
-line, a new session that must recall the name and the insult, and Mira
-hearing the insult as gossip. It writes `report.md` and `report.json`.
+line, a new session whose reply must use the name and the insult, and Mira
+asked for news so her reply must quote the rumor. It writes
+`report.md` and `report.json`.
 
 Offline, no API key (this is what CI can run):
 
@@ -200,16 +201,18 @@ python eval_harness.py --provider dashscope --out eval_reports
 ```
 
 `--judge` adds one extra model call per turn that scores persona fit
-from 1 to 5. It is skipped for `--provider mock` and is not part of the
-two-call dialogue budget. The mock run scores state, memory recall
-(facts present in the next session's system prompt), language, an
-exclusive-marker persona check, affinity sign, and calls, tokens, and
-latency per turn. Mock token counts stay 0 because the scripted model
-does not report usage.
+from 1 to 5. It sees the game state after the turn, not the tool trace.
+It is skipped for `--provider mock` and is not part of the two-call
+dialogue budget. The report states what each metric measures. State is
+this turn's own effect. Memory recall and gossip require the facts in
+the spoken reply. Persona checks that the reply does not use another
+resident's marker. Affinity is positive only after a gift, a successful
+charge, or a quest accept or complete. Mock token counts stay 0.
 
 ### Web demo
 
-Same `TownSession` as the CLI, served by the Python standard library:
+Same `TownSession` as the CLI, served by the Python standard library.
+Every request uses one background event loop:
 
 ```bash
 python web_demo.py --provider mock --port 8765

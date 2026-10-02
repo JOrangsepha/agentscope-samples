@@ -293,8 +293,9 @@ def _english_name(text: str) -> str | None:
     match = _EN_NAME.search(text)
     if match is None:
         return None
+    clause = re.split(r"[.!?。！？]", match.group(1), maxsplit=1)[0]
     chosen: list[str] = []
-    for word in _EN_WORD.findall(match.group(1)):
+    for word in _EN_WORD.findall(clause):
         if word.lower() in _EN_STOP:
             break
         chosen.append(word)

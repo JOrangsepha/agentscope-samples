@@ -24,5 +24,8 @@ def test_offline_eval_meets_the_dialogue_budget(tmp_path: Path) -> None:
     assert metrics["input_tokens"] == 0
     assert report["judge"] == "skipped"
     md_path, json_path = write_reports(report, tmp_path / "out")
-    assert "state correctness" in md_path.read_text(encoding="utf-8")
+    report_text = md_path.read_text(encoding="utf-8")
+    assert "state correctness" in report_text
+    assert "What each metric measures" in report_text
+    assert "spoken reply contains the remembered facts" in report_text
     assert json_path.exists()
