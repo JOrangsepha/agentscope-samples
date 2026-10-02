@@ -8,29 +8,23 @@ from npc_config import NpcSpec
 # the middleware with the absolute memory directory.
 NPC_MEMORY_INSTRUCTIONS = """# Player memory
 
-Durable facts about the player are stored at `{memory_dir}`.
-Call `remember_player` when you learn a name, trade, promise, insult,
-or quest decision worth keeping for a later visit.
-Do not save small talk.
-The MEMORY.md index below is loaded every session. Use it when the
-player returns, even if this conversation just started.
+Facts live at `{memory_dir}`. Call `remember_player` for a name,
+trade, promise, insult, or quest decision. Skip small talk.
+MEMORY.md below is loaded every visit.
 """
 
 _TOOL_HELP = {
     "remember_player": "save a durable fact about the player.",
-    "give_item": "hand over an item listed under stock you can give now.",
-    "charge_player": (
-        "charge the player for a service on your list, such as a bed. "
-        "Do not charge for anything else."
-    ),
+    "give_item": "hand over an item listed under stock.",
+    "charge_player": "charge for a listed service only, such as a bed.",
     "accept_quest": "accept a quest you give, once, while it is available.",
     "complete_quest": (
-        "complete a quest you give when the player is carrying the "
-        "required item. The game pays the reward once."
+        "complete your quest when the player carries the item. "
+        "The game pays the reward once."
     ),
     "no_action": (
-        "call this when gold, items, quests, and memory should stay "
-        "unchanged. Speech cannot give an item or take gold."
+        "gold, items, quests, and memory stay unchanged. "
+        "Speech cannot give an item or take gold."
     ),
 }
 
@@ -129,11 +123,10 @@ def build_system_prompt(
         f"Affinity: {affinity} (range -100 to 100). {tone}\n"
         f"Last emotion you showed: {emotion}.\n"
         f"{impression}"
-        "Let the affinity change your wording. Stay in character.\n"
-        "Change affinity by a negative number only for rudeness, "
+        "Stay in character. A negative change is only for rudeness, "
         "threats, or a broken promise. "
         "A polite question is never rudeness. "
-        "A polite request you cannot fulfill changes affinity by 0.\n\n"
+        "A request you cannot fulfill changes affinity by 0.\n\n"
         "# Game state\n"
         f"{state_text}\n"
         f"Stock you can give now: {stock_text}.\n"
@@ -142,7 +135,8 @@ def build_system_prompt(
         f"{_rumor_text(rumors)}\n\n"
         "# Facts\n"
         f"{hammer_fact(hammer_status, hammer_place, npc.npc_id)}\n"
-        "Do not assign the player's trade to another resident.\n"
+        "Bram is the blacksmith, Mira the innkeeper, Rowan the elder. "
+        "Do not give a resident the player's trade.\n"
         "Give only items listed under stock.\n\n"
     )
     if speaking:
@@ -155,15 +149,12 @@ def build_system_prompt(
     tools = _tool_lines(npc, gives_quests)
     return (
         head + "# Action\n"
-        "Call one tool. This phase does not speak to the player.\n"
-        "Small talk, greetings, and questions about memory change "
-        "nothing. Use the no_action tool for them. "
-        "A question about the player's name is one of those turns. "
+        "Call one tool. Do not speak and do not write a sentence.\n"
+        "If gold, items, quests, and memory stay the same, call the "
+        "no_action tool. That includes greetings, memory questions, "
+        "a repeat reward, and begging for an item you will not give. "
         "Do not write the tool name as a sentence.\n"
-        "If gold, items, quests, and memory should stay unchanged, "
-        "use the no_action tool.\n"
-        "Do not write a spoken line. A sentence cannot give an item "
-        "or take gold.\n\n"
+        "A sentence cannot give an item or take gold.\n\n"
         "# Tools\n"
         f"{tools}\n"
     )
@@ -186,14 +177,19 @@ def _service_line(npc: NpcSpec) -> str:
     return f"Services you can charge for: {listed}.\n\n"
 
 
-def language_banner(language: str) -> str:
+def language_banner(language: str, *, items: bool = True) -> str:
     """The language rule, stated before the rest of the speak prompt."""
     if language == "Simplified Chinese":
+        names = (
+            " Items: forging hammer=锻造锤, horseshoe=马掌, "
+            "iron nail=铁钉, brown loaf=黑面包."
+            if items
+            else ""
+        )
         return (
             "Reply in Simplified Chinese. 只用简体中文。 "
-            "Translate item names: forging hammer is 锻造锤, "
-            "horseshoe is 马掌, iron nail is 铁钉, brown loaf is 黑面包. "
-            "Do not leave those English names in the reply."
+            "Keep the player's name exactly as written. 姓名不要音译。"
+            f"{names}"
         )
     if language == "English":
         return "Reply in English."
@@ -217,21 +213,16 @@ def _speech_rules(
         f"The player said: {spoken}\n"
         f"{paid}"
         f"{granted}"
-        "Speak in one or two sentences. "
-        "Do not write asterisks or stage directions.\n"
-        "Emotion must be one of: neutral, happy, annoyed, grateful, "
-        "warm, suspicious.\n"
-        "Set affinity_delta to an integer from -3 to 3.\n"
-        "Only an event a tool result says happened this turn earns "
-        "a positive affinity_delta: an item given, coins taken, a "
-        "quest accepted, or a quest completed. A question, small "
-        "talk, or a result that says already or cannot does not.\n"
+        "Speak in one or two sentences. No asterisks or stage directions.\n"
+        "Emotion: neutral, happy, annoyed, grateful, warm, suspicious. "
+        "affinity_delta is an integer from -3 to 3.\n"
+        "A positive affinity_delta only if a tool result this turn "
+        "gave an item, took coins, or accepted or completed a quest. "
+        "A question, small talk, or already/cannot does not.\n"
         "Call GenerateStructuredOutput directly. Do not write the "
         "emotion, affinity_delta, or affinity_reason as plain text.\n"
-        "Do not say you gave an item or took gold unless a tool "
-        "result in this turn says that happened.\n"
-        "If this turn says the player paid for a service, confirm "
-        "that service. Do not deny it.\n"
+        "Do not claim a gift or a payment the tool result did not "
+        "make. If the player paid, confirm it. Do not deny it.\n"
     )
 
 

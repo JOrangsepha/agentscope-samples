@@ -394,6 +394,12 @@ _REPLY_ALTS = {
         "told bram",
         "said to bram",
         "player told bram",
+        "heard you call",
+        "you called him",
+        "you called bram",
+        "insulted",
+        "对布拉姆说",
+        "骂",
     ),
 }
 
@@ -568,7 +574,8 @@ def _markdown(report: dict) -> str:
         "",
         "Memory recall: the spoken reply contains the remembered facts, "
         "matched case-insensitively. 'thief' counts for 'stupid thief', "
-        "and 'told Bram' counts for the stored gossip sentence. "
+        "'told Bram', 'heard you call', 'you called him', and "
+        "'insulted' count for the stored gossip sentence. "
         "A fact that is only in the system prompt does not count.",
         "",
         "Language match: the reply language equals the player's language.",

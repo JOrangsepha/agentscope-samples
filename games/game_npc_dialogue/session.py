@@ -330,17 +330,16 @@ _ITEM_ZH = {
 
 
 def _granted_note(items: list[str], language: str) -> str:
-    """Tell the speaker which items this turn actually handed over."""
+    """Tell the speaker to mention this handoff in their own voice."""
     if not items:
         return ""
     if language == "Simplified Chinese":
         names = "、".join(_ITEM_ZH.get(item, item) for item in items)
-        return f"本轮你刚刚交给玩家：{names}。" "要说是你刚才交给他们的。不要说他们本来就有。"
+        return f"你现在把{names}交给玩家。用你自己的口气说出来。" "不要说他们本来就有。"
     names = ", ".join(items)
     return (
-        f"This turn you just gave the player: {names}. "
-        "Say that you handed it over just now. "
-        "Do not say they already had it."
+        f"You are handing the player {names} now. "
+        "Say so in your own voice. Do not say they already had it."
     )
 
 
@@ -393,11 +392,8 @@ def _speak_cue(player_text: str, language: str) -> str:
     """Turn-local instruction. It is removed from history after the reply."""
     return (
         f"{SPEAK_CUE}\n"
-        f"{language_banner(language)}\n"
-        f"The player said: {player_text}\n"
-        "One or two sentences, no stage directions. "
-        "Mention a gift or a payment only if a tool result this turn "
-        "says it succeeded."
+        f"{language_banner(language, items=False)}\n"
+        f"The player said: {player_text}"
     )
 
 
@@ -522,7 +518,7 @@ def _parse_structured_call(text: str) -> dict | None:
     marker = "GenerateStructuredOutput"
     start = text.find(marker)
     if start < 0:
-        return None
+        return _parse_plain_structured(text)
     body = text[start + len(marker) :].lstrip()
     if not body.startswith("("):
         return None
@@ -608,6 +604,50 @@ def _parse_structured_kwargs(body: str) -> dict | None:
     if "reply" not in fields:
         return None
     return _normalize_structured(fields)
+
+
+_EMOTION_WORD = "neutral|happy|annoyed|grateful|warm|suspicious"
+_PLAIN_EMOTION = re.compile(_EMOTION_WORD, re.IGNORECASE)
+_PLAIN_DELTA = re.compile(
+    r"[\s:：]*"
+    r"(?:affinity[\s_]*delta|affinity[\s_]*change|delta)?"
+    r"[\s:：]*\(?"
+    r"(-?\d+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_plain_structured(text: str) -> dict | None:
+    """Read reply, emotion, delta, and reason from a trailing label."""
+    cleaned = text.strip()
+    if len(cleaned) < 8:
+        return None
+    start = max(0, len(cleaned) - 280)
+    tail = cleaned[start:]
+    for match in reversed(list(_PLAIN_EMOTION.finditer(tail))):
+        number = _PLAIN_DELTA.match(tail[match.end() :])
+        if number is None:
+            continue
+        reply = cleaned[: start + match.start()].strip()
+        reply = re.sub(
+            r"\s*emotion\s*:?\s*$",
+            "",
+            reply,
+            flags=re.IGNORECASE,
+        ).strip()
+        if len(reply) < 2:
+            continue
+        reason = tail[match.end() + number.end() :].strip()
+        reason = reason.strip("\"'").strip("()").strip()
+        return _normalize_structured(
+            {
+                "reply": reply,
+                "emotion": match.group(0).lower(),
+                "affinity_delta": int(number.group(1)),
+                "affinity_reason": reason,
+            },
+        )
+    return None
 
 
 def _normalize_structured(payload: dict) -> dict:

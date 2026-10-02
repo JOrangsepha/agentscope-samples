@@ -51,12 +51,10 @@ def prompt_block(save_dir: str | Path) -> str:
     joined = "\n".join(f"- {line}" for line in lines if line)
     return (
         f"{joined}\n"
-        "Each line is what the player told that resident, or a quest "
-        "event. It is not that resident insulting the player. "
-        "When the player asks for news, share every relevant line, "
-        "especially the latest insult. Say who the player told, using "
-        "the words of that line. Do not hide the speaker or the insult. "
-        "Do not invent a rumor, and do not repeat private memory."
+        "The name after Heard by is the witness. "
+        "When the player asks for news, name that witness and the "
+        "latest insult. Do not say a different resident reported it. "
+        "Do not invent a rumor or repeat private memory."
     )
 
 
@@ -84,7 +82,10 @@ def record_public_events(
             source_id,
             source_name,
             "quest",
-            f"{source_name} reports the player accepted The Lost Hammer.",
+            (
+                f"Heard by {source_name}: the player accepted "
+                "The Lost Hammer."
+            ),
         )
     elif quest_event == "completed":
         _append(
@@ -93,7 +94,7 @@ def record_public_events(
             source_name,
             "quest",
             (
-                f"{source_name} reports the player completed "
+                f"Heard by {source_name}: the player completed "
                 "The Lost Hammer."
             ),
         )
@@ -119,7 +120,7 @@ def narrate_wait(save_dir: str | Path, config: TownConfig) -> str:
     rumor = str(latest.get("text", ""))
     text = (
         f"{speaker.name} tells {listener.name}: {rumor}\n"
-        f"{listener.name}: Then the town should know."
+        f"{_wait_reply(listener.name, rumor)}"
     )
     _append(save_dir, speaker_id, speaker.name, "exchange", text)
     return text
@@ -141,7 +142,20 @@ def _insult_line(source_name: str, player_text: str) -> str:
     """One sentence. The period stays inside the quotation."""
     said = " ".join(player_text.split()).strip("'\"")
     said = said.rstrip(".!?。！？")
-    return f"The player told {source_name}: '{said}.'"
+    return (
+        f"Heard by {source_name}: " f"The player told {source_name}: '{said}.'"
+    )
+
+
+def _wait_reply(listener_name: str, rumor: str) -> str:
+    """Do not ask the subject of the rumor to spread it."""
+    about = (
+        f"Heard by {listener_name}" in rumor
+        or f"told {listener_name}" in rumor
+    )
+    if about:
+        return f"{listener_name}: I was there."
+    return f"{listener_name}: I'll remember that."
 
 
 def _append(

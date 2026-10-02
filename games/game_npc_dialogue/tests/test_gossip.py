@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from gossip import _wait_reply  # pylint: disable=protected-access
 from mock_model import ScriptedNpcModel
 from npc_config import load_town_config
 from session import TownSession
@@ -15,6 +16,7 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
     asyncio.run(session.talk("bram", "You are a stupid thief."))
     gossip = (tmp_path / "gossip.json").read_text(encoding="utf-8")
+    assert "Heard by Bram: The player told Bram: " in gossip
     assert "The player told Bram: 'You are a stupid thief.'" in gossip
     assert "'.'." not in gossip
     assert "finds the player rude" not in gossip
@@ -37,6 +39,11 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     exchange = other.wait_in_town()
     assert "Mira tells" in exchange
     assert "The player told Bram" in exchange
+    assert "Then the town should know" not in exchange
+    assert "Heard by Bram" in exchange
+    assert exchange.strip().endswith("I'll remember that.")
+    about_bram = "Heard by Bram: The player told Bram: 'fool.'"
+    assert _wait_reply("Bram", about_bram) == "Bram: I was there."
     again = (tmp_path / "gossip.json").read_text(encoding="utf-8")
     assert "exchange" in again
 
