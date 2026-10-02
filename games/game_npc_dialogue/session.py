@@ -2,6 +2,7 @@
 """One visit to Millhaven: talk to NPCs and keep the save on disk."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,10 +21,14 @@ from prompts import NPC_MEMORY_INSTRUCTIONS, build_system_prompt
 from schema import NpcTurn
 from speech import (
     ACT_CUE,
+    REFUND_EN,
+    REFUND_ZH,
     SPEAK_CUE,
+    denies_paid_service,
     guard_unproven_transfer,
     learn_player_name,
     normalize_emotion,
+    polite_question,
     polish_reply,
     reply_language,
 )
@@ -33,6 +38,7 @@ _DELTA_MIN = -3
 _DELTA_MAX = 3
 _NOTABLE_DELTA = 2
 _GAME_TOOLS = frozenset(GAME_TOOL_NAMES)
+_PAID = re.compile(r"paid (\d+) gold \(([^)]*)\)", re.IGNORECASE)
 
 
 @dataclass
@@ -94,11 +100,13 @@ class TownSession:
         if not _turn_has_game_tool(state, player_text):
             await actor.reply(UserMsg(name="director", content=_act_cue()))
         _drop_action_prose(state, player_text)
+        paid = _payment(state, player_text)
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
             player_text=player_text,
             language=language,
+            paid_note=_paid_note(paid),
         )
         message = await speaker.reply(
             UserMsg(
@@ -107,6 +115,18 @@ class TownSession:
             ),
             structured_schema=NpcTurn,
         )
+        if _needs_chinese_retry(language, message):
+            message = await speaker.reply(
+                UserMsg(
+                    name="director",
+                    content=(
+                        f"{_speak_cue(player_text, language)}\n"
+                        "The previous reply was not Simplified Chinese. "
+                        "Reply in Simplified Chinese only."
+                    ),
+                ),
+                structured_schema=NpcTurn,
+            )
         result = _apply_turn(
             self.game,
             npc_id,
@@ -119,6 +139,7 @@ class TownSession:
             _new_items(before_items, self.game.inventory),
             self.game.gold < before_gold,
             _quest_failed(state, player_text),
+            paid,
         )
         _scrub_history(state)
         return result
@@ -130,6 +151,7 @@ class TownSession:
         with_tools: bool,
         player_text: str = "",
         language: str = "",
+        paid_note: str = "",
     ) -> Agent:
         state = self._agent_states.setdefault(npc_id, AgentState())
         state.permission_context.mode = PermissionMode.BYPASS
@@ -156,6 +178,7 @@ class TownSession:
                 speaking=not with_tools,
                 player_text=player_text,
                 language=language,
+                paid_note=paid_note,
             ),
             model=self.model,
             toolkit=toolkit,
@@ -172,6 +195,7 @@ class TownSession:
         speaking: bool = False,
         player_text: str = "",
         language: str = "",
+        paid_note: str = "",
     ) -> str:
         npc = self.config.npc(npc_id)
         return build_system_prompt(
@@ -186,6 +210,8 @@ class TownSession:
             speaking=speaking,
             player_text=player_text,
             language=language,
+            hammer_status=_hammer_status(self.game),
+            paid_note=paid_note,
         )
 
 
@@ -224,6 +250,56 @@ def _act_cue() -> str:
     )
 
 
+def _hammer_status(game: GameState) -> str:
+    quest = game.data.get("quests", {}).get("lost_hammer", {})
+    return str(quest.get("status") or "available")
+
+
+def _paid_note(paid: tuple[int, str] | None) -> str:
+    if paid is None:
+        return ""
+    amount, reason = paid
+    return (
+        f"This turn the player paid {amount} gold for {reason}. "
+        "Confirm that service. Do not deny it."
+    )
+
+
+def _payment(
+    state: AgentState,
+    player_text: str,
+) -> tuple[int, str] | None:
+    """Amount and reason from a successful charge_player result."""
+    start = _player_index(state.context, player_text)
+    if start is None:
+        return None
+    found = None
+    for message in state.context[start + 1 :]:
+        for block in _named_tool_blocks(message, {"tool_result"}):
+            if block.name != "charge_player":
+                continue
+            match = _PAID.search(_result_text(block))
+            if match:
+                found = (int(match.group(1)), match.group(2).strip())
+    return found
+
+
+def _needs_chinese_retry(language: str, message) -> bool:
+    if language != "Simplified Chinese":
+        return False
+    text = _structured_reply(message)
+    if not text.strip():
+        return False
+    return reply_language(text) != "Simplified Chinese"
+
+
+def _structured_reply(message) -> str:
+    payload = getattr(message, "structured_output", None) or {}
+    if payload.get("reply"):
+        return str(payload["reply"])
+    return message.get_text_content() or ""
+
+
 def _speak_cue(player_text: str, language: str) -> str:
     """Turn-local instruction. It is removed from history after the reply."""
     return (
@@ -248,6 +324,7 @@ def _apply_turn(
     granted: list[str],
     charged: bool,
     quest_failed: bool,
+    paid: tuple[int, str] | None,
 ) -> TurnResult:
     """Read structured output and write emotion plus affinity."""
     payload = message.structured_output or {}
@@ -269,9 +346,16 @@ def _apply_turn(
     delta = max(_DELTA_MIN, min(_DELTA_MAX, delta))
     if quest_failed and delta > 0:
         delta = 0
+    if delta < 0 and polite_question(player_text):
+        delta = 0
     emotion = normalize_emotion(str(payload.get("emotion", "")))
     reason = str(payload["affinity_reason"])
     reply = polish_reply(str(payload["reply"]), reason) or "(no reply)"
+    if paid and denies_paid_service(reply):
+        amount, reason_paid = paid
+        game.adjust_gold(amount, f"refund {reason_paid}")
+        charged = False
+        reply = REFUND_ZH if language == "Simplified Chinese" else REFUND_EN
     reply = guard_unproven_transfer(
         reply,
         stock,

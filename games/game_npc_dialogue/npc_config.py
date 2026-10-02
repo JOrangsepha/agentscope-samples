@@ -30,6 +30,7 @@ class NpcSpec:
     gifts: list[str]
     starting_affinity: int
     can_charge: bool = False
+    services: list[str] = field(default_factory=list)
     quest_gifts: list[QuestGift] = field(default_factory=list)
 
 
@@ -123,5 +124,6 @@ def _load_npc(npc_id: str, npc: dict) -> NpcSpec:
         gifts=list(npc["gifts"]),
         starting_affinity=int(npc["starting_affinity"]),
         can_charge=bool(npc.get("can_charge", False)),
+        services=[str(item) for item in npc.get("services", [])],
         quest_gifts=gifts,
     )

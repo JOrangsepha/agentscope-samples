@@ -19,7 +19,10 @@ player returns, even if this conversation just started.
 _TOOL_HELP = {
     "remember_player": "save a durable fact about the player.",
     "give_item": "hand over an item listed under stock you can give now.",
-    "charge_player": "charge the player a positive number of coins.",
+    "charge_player": (
+        "charge the player for a service on your list, such as a bed. "
+        "Do not charge for anything else."
+    ),
     "accept_quest": "accept a quest you give, once, while it is available.",
     "complete_quest": (
         "complete a quest you give when the player is carrying the "
@@ -30,6 +33,26 @@ _TOOL_HELP = {
         "unchanged. Speech cannot give an item or take gold."
     ),
 }
+
+
+def hammer_fact(status: str) -> str:
+    """Describe the hammer from the live quest status."""
+    if status == "completed":
+        return (
+            "The hammer was returned; the quest is completed. "
+            "Do not say the hammer is still lost or was never lost."
+        )
+    if status == "accepted":
+        return (
+            "Bram's forging hammer is still missing. The quest is "
+            "accepted and is not completed yet. "
+            "Do not say the hammer was never lost."
+        )
+    return (
+        "Bram lost his forging hammer. The quest is not completed, "
+        "so the hammer is still lost. "
+        "Do not say the hammer was never lost."
+    )
 
 
 def affinity_tone(affinity: int) -> str:
@@ -55,6 +78,8 @@ def build_system_prompt(
     speaking: bool = False,
     player_text: str = "",
     language: str = "",
+    hammer_status: str = "available",
+    paid_note: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
     shown = npc.gifts if stock is None else stock
@@ -74,19 +99,19 @@ def build_system_prompt(
         "Let the affinity change your wording. Stay in character.\n"
         "Change affinity by a negative number only for rudeness, "
         "threats, or a broken promise. "
+        "A polite question is never rudeness. "
         "A polite request you cannot fulfill changes affinity by 0.\n\n"
         "# Game state\n"
         f"{state_text}\n"
-        f"Stock you can give now: {stock_text}.\n\n"
+        f"Stock you can give now: {stock_text}.\n"
+        f"{_service_line(npc)}"
         "# Facts\n"
-        "Bram lost his forging hammer. It stays lost until that quest "
-        "status is completed.\n"
-        "Do not say the hammer was never lost.\n"
+        f"{hammer_fact(hammer_status)}\n"
         "Do not assign the player's trade to another resident.\n"
         "Give only items listed under stock.\n\n"
     )
     if speaking:
-        return head + _speech_rules(player_text, language)
+        return head + _speech_rules(player_text, language, paid_note)
     tools = _tool_lines(npc, gives_quests)
     return (
         head + "# Action\n"
@@ -103,13 +128,22 @@ def build_system_prompt(
     )
 
 
-def _speech_rules(player_text: str, language: str) -> str:
+def _service_line(npc: NpcSpec) -> str:
+    if not npc.services:
+        return "\n"
+    listed = ", ".join(npc.services)
+    return f"Services you can charge for: {listed}.\n\n"
+
+
+def _speech_rules(player_text: str, language: str, paid_note: str) -> str:
     spoken = player_text.strip() or "(empty)"
     lang = language or "English"
+    paid = f"{paid_note}\n" if paid_note else ""
     return (
         "# This turn\n"
         f"The player said: {spoken}\n"
         f"Reply in {lang}.\n"
+        f"{paid}"
         "Speak in one or two sentences. "
         "Do not write asterisks or stage directions.\n"
         "Emotion must be one of: neutral, happy, annoyed, grateful, "
@@ -123,6 +157,8 @@ def _speech_rules(player_text: str, language: str) -> str:
         "emotion, affinity_delta, or affinity_reason as plain text.\n"
         "Do not say you gave an item or took gold unless a tool "
         "result in this turn says that happened.\n"
+        "If this turn says the player paid for a service, confirm "
+        "that service. Do not deny it.\n"
     )
 
 

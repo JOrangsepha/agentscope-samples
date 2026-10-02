@@ -165,11 +165,20 @@ class GameState:
             f"Gold is now {updated}."
         )
 
-    def charge(self, amount: int, reason: str) -> str:
-        """Take coins from the player. A charge never adds gold."""
+    def charge(self, npc_id: str, amount: int, reason: str) -> str:
+        """Take coins for one configured service. A charge never adds gold."""
+        npc = self.config.npc(npc_id)
         amount = int(amount)
+        if not npc.can_charge:
+            return f"{npc.name} cannot charge the player."
         if amount <= 0:
             return "A charge must be a positive number of coins."
+        if not _service_allowed(reason, npc.services):
+            listed = ", ".join(npc.services) or "(none)"
+            return (
+                f"{npc.name} cannot charge for '{reason}'. "
+                f"Services: {listed}."
+            )
         return self.adjust_gold(-amount, reason)
 
     def accept_quest(self, npc_id: str, quest_id: str) -> str:
@@ -300,6 +309,11 @@ class GameState:
             f"reward for {quest['title']}",
         )
         return " " + paid
+
+
+def _service_allowed(reason: str, services: list[str]) -> bool:
+    text = reason.lower()
+    return any(service.lower() in text for service in services if service)
 
 
 def _match_choice(requested: str, choices: list[str]) -> str | None:

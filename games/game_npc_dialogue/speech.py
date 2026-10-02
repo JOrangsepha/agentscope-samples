@@ -63,6 +63,22 @@ _BARE_GIFT = ("here you go", "here. one", "take this", "给你", "拿去", "送�
 _SERVICE_HANDOFF = ("here you go", "给你")
 CHARGED_EN = "You were charged, but I have not given you an item."
 CHARGED_ZH = "金币已经扣过了，但没有把物品交给你。"
+REFUND_EN = "I do not offer that, so I have returned your coins."
+REFUND_ZH = "这个我不提供，金币已经退回。"
+_INSULTS = ("stupid", "thief", "fool", "useless", "idiot", "混蛋", "废物")
+_DENIALS = (
+    "don't serve",
+    "do not serve",
+    "doesn't serve",
+    "does not serve",
+    "can't serve",
+    "cannot serve",
+    "not serve",
+    "don't offer",
+    "do not offer",
+    "不提供",
+    "不卖",
+)
 _CHARGE = (
     "that'll be",
     "that will be",
@@ -87,6 +103,21 @@ def learn_player_name(text: str) -> str | None:
     if english:
         return english
     return _chinese_name(text)
+
+
+def polite_question(text: str) -> bool:
+    """True for a question that does not insult the NPC."""
+    stripped = text.strip()
+    if "?" not in stripped and "？" not in stripped:
+        return False
+    lowered = stripped.lower()
+    return not any(word in lowered for word in _INSULTS)
+
+
+def denies_paid_service(reply: str) -> bool:
+    """True when the spoken line refuses a service that was just charged."""
+    lowered = reply.lower()
+    return any(phrase in lowered for phrase in _DENIALS)
 
 
 def normalize_emotion(value: str) -> str:

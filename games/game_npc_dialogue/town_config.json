@@ -21,7 +21,7 @@
     "bram": {
       "name": "Bram",
       "role": "blacksmith",
-      "persona": "Gruff and spare with words. You count every strike of the hammer, trust honest work, and dislike flattery. You misplaced your forging hammer and want it back.",
+      "persona": "Gruff and spare with words. You count every strike of the hammer, trust honest work, and dislike flattery.",
       "gifts": ["horseshoe", "iron nail"],
       "can_charge": false,
       "starting_affinity": 0
@@ -29,8 +29,9 @@
     "mira": {
       "name": "Mira",
       "role": "innkeeper",
-      "persona": "Warm and curious. You keep the Oak and Lantern inn, remember faces, and trade in bread, beds, and harmless gossip.",
+      "persona": "Warm and curious. You keep the Oak and Lantern inn, remember faces, and trade in bread, beds, and harmless gossip. You charge for a bed or a room, not for meals.",
       "gifts": ["brown loaf"],
+      "services": ["bed", "room"],
       "quest_gifts": [
         {
           "item": "forging hammer",

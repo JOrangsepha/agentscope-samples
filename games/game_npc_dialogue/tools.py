@@ -65,13 +65,13 @@ def build_npc_tools(
         return remember_fact(memory_dir, fact)
 
     def charge_player(amount: int, reason: str) -> str:
-        """Charge the player for a service. This never adds gold.
+        """Charge the player for a service you offer. This never adds gold.
 
         Args:
             amount: Coins the player pays. Must be greater than zero.
-            reason: Short reason, such as a bed or a meal.
+            reason: A service from your list, such as a bed or a room.
         """
-        return state.charge(amount, reason)
+        return state.charge(npc_id, amount, reason)
 
     def accept_quest(quest_id: str) -> str:
         """Accept a quest you give, once, while it is still available.

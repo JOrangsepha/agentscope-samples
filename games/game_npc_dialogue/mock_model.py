@@ -16,7 +16,7 @@ from agentscope.formatter import DashScopeChatFormatter
 from agentscope.message import TextBlock, ToolCallBlock
 from agentscope.model import ChatModelBase, ChatResponse
 
-from speech import ACT_CUE, SPEAK_CUE, learn_player_name
+from speech import ACT_CUE, SPEAK_CUE, learn_player_name, reply_language
 
 _AFFINITY_RE = re.compile(r"Affinity:\s*(-?\d+)")
 _NPC_RE = re.compile(r"^You are ([^,]+),", re.MULTILINE)
@@ -68,6 +68,10 @@ class ScriptedNpcModel(ChatModelBase):
         self.act_text = act_text
         self.forced_emotion = forced_emotion
         self.forced_delta = forced_delta
+        # Tests set these to force one English speak, or a refusal line.
+        self.english_first = False
+        self.forced_reply: str | None = None
+        self.gave_english = False
 
     async def _call_api(
         self,
@@ -104,11 +108,12 @@ class ScriptedNpcModel(ChatModelBase):
                 player,
                 _tool_result_text(this_turn),
             )
-            return _with_forced_score(
+            response = _with_forced_score(
                 response,
                 self.forced_emotion,
                 self.forced_delta,
             )
+            return _apply_speak_overrides(response, system, self)
         return _act_response(
             self.act_text,
             saw,
@@ -199,6 +204,29 @@ def _with_forced_score(response, emotion, delta):
         payload["affinity_delta"] = delta
     block.input = json.dumps(payload)
     return response
+
+
+def _set_reply(response, reply: str):
+    block = response.content[0]
+    payload = json.loads(block.input)
+    payload["reply"] = reply
+    block.input = json.dumps(payload)
+    return response
+
+
+def _apply_speak_overrides(response, system: str, model: ScriptedNpcModel):
+    """Force a test reply, or supply Chinese when the prompt requires it."""
+    if model.forced_reply:
+        return _set_reply(response, model.forced_reply)
+    if "Reply in Simplified Chinese." not in system:
+        return response
+    reply = json.loads(response.content[0].input).get("reply", "")
+    if reply_language(str(reply)) == "Simplified Chinese":
+        return response
+    if model.english_first and not model.gave_english:
+        model.gave_english = True
+        return _set_reply(response, "Here's your brown loaf.")
+    return _set_reply(response, "给你。")
 
 
 def _text(text: str) -> ChatResponse:
@@ -345,6 +373,16 @@ def _game_tool_calls(
     gift = _requested_gift(user_l, system)
     if gift is not None and "give_item" in offered:
         calls.append(_call("give_item", {"item": gift}, gift))
+    charge = _charge_request(user_l)
+    if charge is not None and "charge_player" in offered:
+        amount, reason = charge
+        calls.append(
+            _call(
+                "charge_player",
+                {"amount": amount, "reason": reason},
+                reason,
+            ),
+        )
     if _claims_hammer(user_l) and "complete_quest" in offered:
         calls.append(
             _call(
@@ -364,6 +402,13 @@ def _game_tool_calls(
     return calls
 
 
+def _charge_request(user_l: str) -> tuple[int, str] | None:
+    match = re.search(r"charge me (\d+) gold for (?:a |an )?(.+)", user_l)
+    if match is None:
+        return None
+    return int(match.group(1)), match.group(2).strip(" .")
+
+
 def _requested_gift(user_l: str, system: str) -> str | None:
     stock = _stock_text(system)
     for gift in _GIFTS:
@@ -380,6 +425,7 @@ def _choose_reply(
     """Pick the spoken line, emotion, and affinity delta."""
     user_l = user.lower()
     matchers = (
+        _paid_reply,
         _recalled_reply,
         _introduction_reply,
         _rude_reply,
@@ -399,6 +445,33 @@ def _choose_reply(
         "neutral",
         0,
         "No change.",
+    )
+
+
+def _paid_reply(
+    system: str,
+    user_l: str,
+    tool_text: str,
+) -> tuple[str, str, int, str] | None:
+    """Confirm a charge, or admit the service is not on the list."""
+    del system, user_l
+    lowered = tool_text.lower()
+    if "cannot charge" in lowered:
+        return (
+            "I cannot charge for that.",
+            "neutral",
+            0,
+            "Not a listed service.",
+        )
+    match = re.search(r"paid (\d+) gold \(([^)]*)\)", lowered)
+    if match is None:
+        return None
+    reason = match.group(2).strip()
+    return (
+        f"Here you go. That covers the {reason}.",
+        "warm",
+        0,
+        "The player paid for a service.",
     )
 
 

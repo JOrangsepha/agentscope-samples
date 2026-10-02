@@ -8,7 +8,7 @@ from pathlib import Path
 from game_state import GameState
 from mock_model import ScriptedNpcModel
 from npc_config import load_town_config
-from prompts import build_system_prompt
+from prompts import build_system_prompt, hammer_fact
 from session import TownSession
 from speech import (
     ACT_CUE,
@@ -114,10 +114,13 @@ def test_tools_are_limited_to_the_npc(tmp_path: Path) -> None:
     assert "cannot give" in refused_seal
     assert "town seal" not in session.game.inventory
 
-    charged = session.game.charge(3, "a bed")
+    charged = session.game.charge("mira", 3, "a bed")
     assert "paid 3 gold" in charged
     assert session.game.gold == 9
-    refused = session.game.charge(-5, "a refund")
+    meal = session.game.charge("mira", 2, "hot meal")
+    assert "cannot charge" in meal
+    assert session.game.gold == 9
+    refused = session.game.charge("mira", -5, "a refund")
     assert "positive" in refused
     assert session.game.gold == 9
 
@@ -459,6 +462,79 @@ def test_a_failed_quest_call_cannot_raise_affinity(tmp_path: Path) -> None:
     assert refused.game.gold == 12
     assert blocked.affinity_delta <= 0
     assert refused.game.affinity("rowan") <= 1
+
+
+def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
+    """After completion the prompt says the hammer was returned."""
+    assert "still lost" in hammer_fact("available")
+    assert "was returned" in hammer_fact("completed")
+    assert "stays lost" not in hammer_fact("completed")
+    session, model = _session(tmp_path)
+    asyncio.run(session.talk("bram", "Hello."))
+    assert "still lost" in model.calls[0]["system"]
+    assert "polite question is never rudeness" in model.calls[0]["system"]
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(session.talk("mira", "Please give me a forging hammer."))
+    asyncio.run(session.talk("rowan", "I found the hammer. Here it is."))
+    model.calls.clear()
+    asyncio.run(session.talk("bram", "Hello."))
+    system = model.calls[0]["system"]
+    assert "The hammer was returned" in system
+    assert "stays lost" not in system
+
+    rude = ScriptedNpcModel(forced_emotion="annoyed", forced_delta=-1)
+    asked = TownSession(load_town_config(), tmp_path / "ask", rude)
+    result = asyncio.run(asked.talk("bram", "铁匠，你的锤子找回来了吗？"))
+    assert result.affinity_delta == 0
+    assert asked.game.affinity("bram") == 0
+
+
+def test_charges_follow_the_service_list(tmp_path: Path) -> None:
+    """A hot meal is refused. A denied bed line refunds the coins."""
+    session, model = _session(tmp_path)
+    meal = asyncio.run(
+        session.talk("mira", "Please charge me 2 gold for a hot meal."),
+    )
+    assert session.game.gold == 12
+    assert "cannot charge" in meal.reply.lower()
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert "paid 2 gold" not in speak[-1]["system"]
+
+    paid_model = ScriptedNpcModel()
+    paid = TownSession(load_town_config(), tmp_path / "bed", paid_model)
+    bed = asyncio.run(
+        paid.talk("mira", "Please charge me 3 gold for a bed."),
+    )
+    assert paid.game.gold == 9
+    assert "bed" in bed.reply.lower()
+    paid_speak = [
+        call for call in paid_model.calls if call["phase"] == "speak"
+    ]
+    assert "paid 3 gold for bed" in paid_speak[-1]["system"]
+    assert "Do not deny it." in paid_speak[-1]["system"]
+
+    deny_model = ScriptedNpcModel()
+    deny_model.forced_reply = "I'm sorry, but I don't serve beds."
+    denied = TownSession(load_town_config(), tmp_path / "deny", deny_model)
+    refused = asyncio.run(
+        denied.talk("mira", "Please charge me 3 gold for a bed."),
+    )
+    assert denied.game.gold == 12
+    assert (
+        refused.reply == "I do not offer that, so I have returned your coins."
+    )
+
+
+def test_chinese_reply_is_regenerated_once(tmp_path: Path) -> None:
+    """An English line to a Chinese player is spoken again in Chinese."""
+    model = ScriptedNpcModel()
+    model.english_first = True
+    session = TownSession(load_town_config(), tmp_path, model)
+    result = asyncio.run(session.talk("mira", "米拉，能给我一条黑面包吗？"))
+    assert reply_language(result.reply) == "Simplified Chinese"
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    assert len(speak) == 2
+    assert "Reply in Simplified Chinese." in speak[1]["system"]
 
 
 def _history_text(session: TownSession, npc_id: str) -> str:
