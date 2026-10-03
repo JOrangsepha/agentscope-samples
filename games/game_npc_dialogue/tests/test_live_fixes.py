@@ -722,6 +722,10 @@ def test_a_wrong_gold_total_is_spoken_once_more(tmp_path: Path) -> None:
     assert not purse_mismatch("You now hold 9 gold.", 9)
     assert not purse_mismatch("You paid 3 gold for a bed.", 9)
     assert not purse_mismatch("Here you go. That covers the bed.", 9)
+    assert not purse_mismatch("收取3枚金币", 6)
+    assert not purse_mismatch("8枚金币的奖励已经发过了", 6)
+    assert not purse_mismatch("收了3枚金币", 6)
+    assert not purse_mismatch("You have 8 gold from the reward", 6)
     assert "9" in gold_retry_line("English", 9)
     assert "9" in gold_retry_line("Simplified Chinese", 9)
 

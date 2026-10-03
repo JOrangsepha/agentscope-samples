@@ -336,14 +336,14 @@ _NUMBER_WORDS = {
     "twenty": 20,
     "thirty": 30,
 }
+_NOT_A_TOTAL = r"(?!\s+(?:from|reward)\b)"
 _PURSE = re.compile(
-    r"(?:hold(?:ing)?|have|has|having|left with|gold is|now at|"
-    r"carrying|carry)\s+(\d+|[a-z]+)\s+gold\b"
-    r"|gold\s+stands\s+at\s+(\d+|[a-z]+)\b"
-    r"|(\d+|[a-z]+)\s+gold\s+(?:left|now|in all|total|remaining|on you)\b"
-    r"|金币\s*(\d+)"
-    r"|(\d+)\s*枚(?:金币)?"
-    r"|(?:还剩|一共|总共)\s*(\d+)",
+    r"(?:have|hold(?:ing)?)\s+(\d+|[a-z]+)\s+gold\b"
+    + _NOT_A_TOTAL
+    + r"|stands\s+at\s+(\d+|[a-z]+)\b"
+    + r"|now\s+(\d+|[a-z]+)\s+gold\b"
+    + _NOT_A_TOTAL
+    + r"|(?:你现在有|你有|还剩|共有|一共)\s*(\d+)\s*枚",
     re.IGNORECASE,
 )
 
