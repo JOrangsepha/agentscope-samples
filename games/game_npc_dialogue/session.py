@@ -8,7 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
-from agentscope.message import TextBlock, ToolCallBlock, UserMsg
+from agentscope.message import (
+    AssistantMsg,
+    TextBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+    ToolResultState,
+    UserMsg,
+)
 from agentscope.middleware import AgenticMemoryMiddleware, MiddlewareBase
 from agentscope.model import ChatModelBase, ChatResponse
 from agentscope.permission import PermissionMode
@@ -18,10 +25,13 @@ from agentscope.tool import Toolkit
 from game_state import GameState
 from gossip import (
     asks_for_news,
+    insult_retry_line,
+    latest_insult_quote,
     narrate_wait,
     news_to_repeat,
     prompt_block,
     record_public_events,
+    reply_voices_insult,
 )
 from memory_store import asks_for_recall, recall_note, remember_fact
 from npc_config import TownConfig
@@ -137,17 +147,25 @@ class TownSession:
         )
         state = self._agent_states[npc_id]
         if not _turn_has_game_tool(state, player_text):
-            await actor.reply(UserMsg(name="director", content=_act_cue()))
+            if _leaves_state_alone(player_text):
+                _stamp_no_action(state, npc_name)
+            else:
+                await actor.reply(
+                    UserMsg(name="director", content=_act_cue()),
+                )
         _drop_action_prose(state, player_text)
         paid = _payment(state, player_text)
         granted = _new_items(before_items, self.game.inventory)
         news_note = ""
+        insult_quote = ""
         if asks_for_news(player_text):
             news_note = news_to_repeat(
                 self.save_dir,
                 language,
                 npc_name,
             )
+            if news_note:
+                insult_quote = latest_insult_quote(self.save_dir)
         gold_changed = self.game.gold != before_gold
         items_changed = list(self.game.inventory) != list(before_items)
         ledger_note = ""
@@ -185,21 +203,21 @@ class TownSession:
             ledger_note,
             remembered,
         )
-        message = await speaker.reply(
-            UserMsg(name="director", content=cue),
-            structured_schema=NpcTurn,
-        )
+        message = await _speak_once(speaker, cue)
         if _needs_chinese_retry(language, message):
-            message = await speaker.reply(
-                UserMsg(
-                    name="director",
-                    content=(
-                        f"{cue}\n"
-                        "The previous reply was not Simplified Chinese. "
-                        "Reply in Simplified Chinese only."
-                    ),
-                ),
-                structured_schema=NpcTurn,
+            message = await _speak_once(
+                speaker,
+                cue
+                + "\nThe previous reply was not Simplified Chinese. "
+                + "Reply in Simplified Chinese only.",
+            )
+        if insult_quote and not reply_voices_insult(
+            _structured_reply(message),
+            insult_quote,
+        ):
+            message = await _speak_once(
+                speaker,
+                f"{cue}\n{insult_retry_line(language, insult_quote)}",
             )
         result = _apply_turn(
             self.game,
@@ -355,6 +373,30 @@ class StructuredTextMiddleware(MiddlewareBase):
         del agent
         response = await next_handler(**input_kwargs)
         return _promote_structured_text(response)
+
+
+def _leaves_state_alone(player_text: str) -> bool:
+    """News and recall questions do not change gold, items, or quests."""
+    return asks_for_news(player_text) or asks_for_recall(player_text)
+
+
+def _stamp_no_action(state: AgentState, npc_name: str) -> None:
+    """Record no_action without another model call."""
+    block = ToolResultBlock(
+        id=f"no-action-{len(state.context)}",
+        name="no_action",
+        output="No game state changed (Nothing to change.).",
+        state=ToolResultState.SUCCESS,
+    )
+    state.context.append(AssistantMsg(name=npc_name, content=[block]))
+
+
+async def _speak_once(speaker, cue: str):
+    """One structured speak call."""
+    return await speaker.reply(
+        UserMsg(name="director", content=cue),
+        structured_schema=NpcTurn,
+    )
 
 
 def _act_cue() -> str:

@@ -45,8 +45,6 @@ def hammer_fact(
     if where == "returned" or status == "completed":
         return (
             "The hammer was returned; the quest is completed. "
-            "The 8-gold reward was already paid. "
-            "Do not call that their total gold. "
             "Do not say the hammer is still lost or was never lost."
         )
     if where == "carried":
@@ -215,11 +213,9 @@ def language_banner(language: str, *, items: bool = True) -> str:
 
 
 _WORLD = (
-    "Bram forges. Mira rents beds and rooms at the Oak and Lantern, "
-    "not meals. Rowan the elder does not carve; turn the lost hammer "
-    "in to him, not to Bram.\n"
-    "If the reward was already paid, say the 8-gold reward was "
-    "already paid. Do not give that figure as their total gold.\n"
+    "Roster: Bram the blacksmith forges blades and handles. "
+    "Mira the innkeeper rents beds only; no meals are sold in town. "
+    "Rowan the elder has no craft.\n"
 )
 
 

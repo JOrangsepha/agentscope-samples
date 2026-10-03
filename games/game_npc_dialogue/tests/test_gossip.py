@@ -9,6 +9,7 @@ from pathlib import Path
 from gossip import (  # pylint: disable=protected-access
     _wait_reply,
     asks_for_news,
+    reply_voices_insult,
 )
 from mock_model import ScriptedNpcModel
 from npc_config import load_town_config
@@ -16,11 +17,14 @@ from session import TownSession
 
 
 def _assert_news_addresses_you(system: str) -> None:
-    """The news injection says you, and asks for a retelling."""
+    """The news injection quotes the insult and addresses the player as you."""
     assert "Bram heard you say" in system
     assert "asked for news" in system
-    assert "own words" in system
-    assert "not as a list" in system
+    assert "rude remark" in system
+    assert "Do not change its meaning" in system
+    assert 'This is an insult, a rude remark: "You are a stupid thief."' in (
+        system
+    )
     news_part = system.split("You asked for news", 1)[-1].split(
         "Speak in one",
         1,
@@ -79,7 +83,8 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     assert "Mira tells" in exchange
     assert "Then the town should know" not in exchange
     assert "Heard by" not in exchange
-    assert 'Bram heard the player say: "You are a stupid thief."' in exchange
+    assert 'Bram heard you say: "You are a stupid thief."' in exchange
+    assert "heard the player" not in exchange
     assert exchange.strip().endswith("I'll remember that.")
     about_bram = 'Bram heard the player say: "fool."'
     assert _wait_reply("Bram", about_bram) == "Bram: I was there."
@@ -95,8 +100,8 @@ def test_the_hearer_says_i_heard(tmp_path: Path) -> None:
     speak = [call for call in session.model.calls if call["phase"] == "speak"]
     note = speak[-1]["system"]
     assert "I heard you accepted The Lost Hammer" in note
-    assert "own words" in note
-    assert "not as a list" in note
+    assert "Do not change its meaning" in note
+    assert "rude remark" not in note
     assert "Rowan heard the player accepted" in note
     assert "repeat private memory" not in note
 
@@ -164,6 +169,8 @@ def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
     assert "你侮辱的是Bram" in zh_note
     assert "你是Rowan，不是被骂的人" in zh_note
     assert "不要说这句是在骂你" in zh_note
+    assert "这是一句辱骂、粗鲁的话" in zh_note
+    assert "不要改成夸奖" in zh_note
 
 
 def test_quest_news_is_public_and_wait_is_quiet_at_first(
@@ -194,3 +201,34 @@ def test_quest_news_is_public_and_wait_is_quiet_at_first(
     gossip = (tmp_path / "town" / "gossip.json").read_text(encoding="utf-8")
     assert "accepted The Lost Hammer" in gossip
     assert "gold" not in gossip.lower()
+
+
+def test_a_missed_insult_is_spoken_once_more(tmp_path: Path) -> None:
+    """News that drops the rude quote gets one re-speak, and only one."""
+    quote = "You are a stupid thief"
+    assert not reply_voices_insult(
+        "Bram's been quieter since you spoke to him.",
+        quote,
+    )
+    assert not reply_voices_insult("Bram也听见你夸他手脚麻利呢", quote)
+    assert reply_voices_insult("You called him a stupid thief.", quote)
+    assert reply_voices_insult("那是一句辱骂。", quote)
+
+    quiet = ScriptedNpcModel()
+    quiet.forced_reply = "The square has been quiet."
+    session = TownSession(load_town_config(), tmp_path, quiet)
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    quiet.calls.clear()
+    asyncio.run(session.talk("mira", "What's new around here?"))
+    speak = [call for call in quiet.calls if call["phase"] == "speak"]
+    acts = [call for call in quiet.calls if call["phase"] == "act"]
+    assert len(acts) == 1
+    assert len(speak) == 2
+
+    voiced = ScriptedNpcModel()
+    other = TownSession(load_town_config(), tmp_path / "voiced", voiced)
+    asyncio.run(other.talk("bram", "You are a stupid thief."))
+    voiced.calls.clear()
+    asyncio.run(other.talk("mira", "What news have you heard about me?"))
+    spoken = [call for call in voiced.calls if call["phase"] == "speak"]
+    assert len(spoken) == 1

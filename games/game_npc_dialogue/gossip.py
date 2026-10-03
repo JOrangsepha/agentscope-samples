@@ -10,6 +10,7 @@ each NPC's own ``MEMORY.md`` and are not copied here.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from npc_config import TownConfig
@@ -101,10 +102,11 @@ def narrate_wait(save_dir: str | Path, config: TownConfig) -> str:
         listener_id = "rowan" if source != "rowan" else "bram"
     speaker = config.npc(speaker_id)
     listener = config.npc(listener_id)
-    rumor = str(latest.get("text", ""))
+    raw = str(latest.get("text", ""))
+    shown = _to_you(raw.strip(), listener.name)
     text = (
-        f"{speaker.name} tells {listener.name}: {rumor}\n"
-        f"{_wait_reply(listener.name, rumor)}"
+        f"{speaker.name} tells {listener.name}: {shown}\n"
+        f"{_wait_reply(listener.name, raw)}"
     )
     _append(save_dir, speaker_id, speaker.name, "exchange", text)
     return text
@@ -187,13 +189,10 @@ def news_to_repeat(
         return ""
     who = _insult_target_sentence(language, listener_name, target)
     tail = f"{who} {facts}".strip()
-    if language == "Simplified Chinese":
-        prefix = "你在打听消息。用自己的口气说，不要逐条念。"
-        return f"{prefix}{tail}"
-    return (
-        "You asked for news. Retell this in your own words, "
-        f"not as a list. {tail}"
-    )
+    quote = ""
+    if insults:
+        quote = _quote_in(str(insults[-1].get("text", "")))
+    return f"{_news_prefix(language, quote)} {tail}".strip()
 
 
 def _insult_target_sentence(
@@ -239,8 +238,86 @@ def _insult_target_sentence(
     return sentence
 
 
+_SAID_QUOTE = re.compile(r'say: "(.*)"')
+_INSULT_MARKERS = (
+    "insult",
+    "rude",
+    "thief",
+    "stupid",
+    "fool",
+    "idiot",
+    "liar",
+    "骂",
+    "辱",
+    "粗鲁",
+    "小偷",
+    "蠢货",
+    "笨蛋",
+)
+
+
+def latest_insult_quote(save_dir: str | Path) -> str:
+    """Verbatim insult quote from the latest public insult, if any."""
+    insults = [
+        entry
+        for entry in _public_entries(save_dir)
+        if entry.get("kind") == "insult"
+    ]
+    if not insults:
+        return ""
+    return _quote_in(str(insults[-1].get("text", "")))
+
+
+def reply_voices_insult(reply: str, quote: str) -> bool:
+    """True when the reply quotes the insult or names it as rude."""
+    lowered = reply.lower()
+    if any(mark in lowered for mark in _INSULT_MARKERS):
+        return True
+    for piece in re.findall(r"[A-Za-z]{4,}|[\u4e00-\u9fff]{2,}", quote):
+        if piece.lower() in lowered:
+            return True
+    return False
+
+
+def insult_retry_line(language: str, quote: str) -> str:
+    """One re-speak instruction when the news reply dropped the insult."""
+    if language == "Simplified Chinese":
+        return "上一句没有说出这句辱骂。请引用或贴近原意转述，不要改成夸奖。" + f"原话是：“{quote}”。"
+    return (
+        "The previous reply left out the rude remark. "
+        "Quote or closely paraphrase it. Do not change its meaning. "
+        f'The insult was: "{quote}."'
+    )
+
+
+def _quote_in(text: str) -> str:
+    match = _SAID_QUOTE.search(text)
+    if match is None:
+        return ""
+    return match.group(1).strip().rstrip(".!?。！？")
+
+
+def _news_prefix(language: str, quote: str) -> str:
+    """Tell the NPC to keep the insult's meaning, with the quote labeled."""
+    if language == "Simplified Chinese":
+        prefix = "你在打听消息。引用或贴近原意转述，不要改变意思。"
+        if quote:
+            prefix += f"这是一句辱骂、粗鲁的话：“{quote}”。不要改成夸奖。"
+        return prefix
+    prefix = (
+        "You asked for news. Quote or closely paraphrase it. "
+        "Do not change its meaning."
+    )
+    if quote:
+        prefix += (
+            f' This is an insult, a rude remark: "{quote}." '
+            "Do not turn it into praise."
+        )
+    return prefix
+
+
 def _to_you(text: str, listener_name: str) -> str:
-    """Address the player as you. Only the news injection uses this."""
+    """Address the player as you in news injection and /wait display."""
     listener = listener_name.strip()
     own = f"{listener} heard the player"
     if listener and text.startswith(own):

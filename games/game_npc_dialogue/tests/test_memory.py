@@ -63,9 +63,32 @@ def test_a_recall_question_injects_stored_facts(tmp_path: Path) -> None:
     assert "Your name is Lira" in note
     assert "Your trade is baker" in note
     assert 'You said to me: "You are a stupid thief."' in note
+    assert 'Say "you said"' in note
     assert "own words" in note
     assert "not as a list" in note
     assert "Reference only" not in note
-    assert "8-gold reward was already paid" in note
-    assert "not to Bram" in note
-    assert "not meals" in note
+    assert "8-gold reward" not in note
+    assert "forges blades and handles" in note
+    assert "no meals are sold" in note
+    assert "has no craft" in note
+
+
+def test_a_recall_question_does_not_nudge(tmp_path: Path) -> None:
+    """Recall and news call no_action in code when the act step misses."""
+    model = ScriptedNpcModel(act_text="Let me think aloud.")
+    session = TownSession(load_town_config(), tmp_path, model)
+    asyncio.run(session.talk("bram", "Do you remember me?"))
+    acts = [call for call in model.calls if call["phase"] == "act"]
+    assert len(acts) == 1
+    assert model.calls[-1]["phase"] == "speak"
+    assert model.calls[-1]["saw_tool_result"] == "yes"
+
+    news = ScriptedNpcModel(act_text="Let me think aloud.")
+    asked = TownSession(load_town_config(), tmp_path / "news", news)
+    asyncio.run(asked.talk("mira", "What's new around here?"))
+    assert len([call for call in news.calls if call["phase"] == "act"]) == 1
+
+    nudged = ScriptedNpcModel(act_text="Let me think aloud.")
+    other = TownSession(load_town_config(), tmp_path / "chat", nudged)
+    asyncio.run(other.talk("bram", "The weather is fine today."))
+    assert len([call for call in nudged.calls if call["phase"] == "act"]) == 2

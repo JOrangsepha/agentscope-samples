@@ -575,9 +575,12 @@ def _markdown(report: dict) -> str:
         "turn left the gold total wrong.",
         "",
         "Memory recall: the spoken reply contains the remembered facts, "
-        "matched case-insensitively. 'thief' counts for 'stupid thief', "
-        "'told Bram', 'heard you call', 'heard the player say', and "
-        "'insulted' count for the stored gossip sentence. "
+        "matched case-insensitively. The speak step injects those facts "
+        "when the player asks, so this measures that the injection was "
+        "voiced, the same way affinity sanity measures rule enforcement. "
+        "'thief' counts for 'stupid thief'. The news turn stores "
+        "'Bram heard the player say'; 'told Bram', 'heard you call', "
+        "'heard the player say', and 'insulted' all count. "
         "A fact that is only in the system prompt does not count.",
         "",
         "Language match: the reply language equals the player's language.",

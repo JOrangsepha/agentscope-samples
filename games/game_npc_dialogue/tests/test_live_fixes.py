@@ -496,7 +496,7 @@ def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
     assert "carrying the forging hammer" in carried
     assert "complete_quest" in carried
     assert "was returned" in hammer_fact("completed")
-    assert "8-gold reward was already paid" in hammer_fact("completed")
+    assert "8-gold reward" not in hammer_fact("completed")
     assert "bring it to Bram" in hammer_fact("accepted", "with_mira", "rowan")
     assert "stays lost" not in hammer_fact("completed")
     session, model = _session(tmp_path)

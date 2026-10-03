@@ -140,7 +140,7 @@ def _format_recall(
         if quote:
             bits.append(f"你对我说过：“{quote}”。")
         body = "".join(bits) or "我没有记下你的名字、职业或骂人的话。"
-        return "你在问我记不记得。用自己的口气说，不要逐条念。" + body
+        return "你在问我记不记得。用“你说过”，不要把对方说成别人。" + "用自己的口气说，不要逐条念。" + body
     bits = []
     if name:
         bits.append(f"Your name is {name}.")
@@ -150,6 +150,6 @@ def _format_recall(
         bits.append(f'You said to me: "{quote}."')
     body = " ".join(bits) or "I have no stored name, trade, or insult."
     return (
-        "You asked what I remember. Say it in your own words, "
-        f"not as a list. {body}"
+        'You asked what I remember. Say "you said", '
+        f"in your own words, not as a list. {body}"
     )
