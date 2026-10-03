@@ -1577,6 +1577,11 @@
 
     document.getElementById("line").addEventListener("keydown", (event) => {
       if (event.isComposing) return;
+      if (event.code === "Escape") {
+        event.preventDefault();
+        closeDialogue();
+        return;
+      }
       if (event.code === "Space" && !event.target.value && replyShown < replyFull.length && !loading) {
         event.preventDefault();
         skipTypewriter();

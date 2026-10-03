@@ -239,11 +239,18 @@ Every request uses one background event loop:
 python web_demo.py --provider mock --port 8765
 ```
 
-Open http://127.0.0.1:8765 . The page lists residents, takes a line,
-and shows gold, inventory, quests, affinity and emotion per resident,
-and recent gossip. **Wait** is the same scripted exchange as `/wait`.
-An unknown `npc_id` returns HTTP 400 and is not sent to the current
-resident.
+Open http://127.0.0.1:8765 . You walk a pixel town as a carpenter.
+WASD or the arrow keys move, and a click on the ground walks there.
+Stand next to Bram, Mira, or Rowan and the hint reads
+**Press E / click to talk**. Clicking that resident opens the same
+wooden dialogue box: a pixel portrait, friendship hearts, and the
+reply typed out underneath. Click the box or press Space to finish
+the line. An emote bubble over the sprite follows the structured
+emotion. Gold, the pack, The Lost Hammer, and the clock sit beside
+the map. **Sleep / Next day** (the button, or the bed by the inn)
+is the same scripted exchange as `/wait`, shown as a town notice.
+Movement keys are ignored while the line is focused. An unknown
+`npc_id` returns HTTP 400 and is not sent to the current resident.
 
 ![Millhaven web demo with the mock model](docs/web_demo.png)
 

@@ -216,9 +216,14 @@ python eval_harness.py --provider dashscope --out eval_reports
 python web_demo.py --provider mock --port 8765
 ```
 
-打开 http://127.0.0.1:8765 。页面列出居民、接收一句话，并显示金币、
-背包、任务、每位居民的好感与情绪，以及最近的传闻。**Wait** 与 `/wait`
-是同一段固定对白。不存在的 `npc_id` 返回 HTTP 400，不会改派给当前居民。
+打开 http://127.0.0.1:8765 。你以木匠的身份在像素小镇里走动。
+WASD 或方向键移动，点击地面会走过去。站到 Bram、Mira 或 Rowan
+身边时，提示为 **Press E / click to talk**。按 E 或点击该居民会打开
+木框对话框：像素立绘、友情爱心，以及逐字打出的回复。点击对话框或按
+空格可一次显示完。头顶的表情气泡对应该轮的结构化情绪。金币、背包、
+失落之锤和时钟排在地图两侧。**Sleep / Next day**（按钮，或旅店旁的床）
+与 `/wait` 是同一段固定对白，以镇告示的形式弹出。输入框聚焦时，
+移动键不会带动角色。不存在的 `npc_id` 返回 HTTP 400，不会改派给当前居民。
 
 ![使用脚本模型的米尔黑文网页](docs/web_demo.png)
 
