@@ -45,6 +45,8 @@ def hammer_fact(
     if where == "returned" or status == "completed":
         return (
             "The hammer was returned; the quest is completed. "
+            "The 8-gold reward was already paid. "
+            "Do not call that their total gold. "
             "Do not say the hammer is still lost or was never lost."
         )
     if where == "carried":
@@ -57,7 +59,9 @@ def hammer_fact(
         if viewer and viewer != "mira":
             return (
                 "The quest is accepted and is not completed. "
-                "Do not say where the hammer is."
+                "Do not say where the hammer is. "
+                "Turn the hammer in to Rowan. "
+                "Do not say to bring it to Bram."
             )
         return (
             "Mira is holding Bram's forging hammer and can give it. "
@@ -108,6 +112,7 @@ def build_system_prompt(
     granted_note: str = "",
     news_note: str = "",
     ledger_note: str = "",
+    recall_note: str = "",
     rumors: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
@@ -154,6 +159,7 @@ def build_system_prompt(
             granted_note,
             news_note,
             ledger_note,
+            recall_note,
         )
     tools = _tool_lines(npc, gives_quests)
     return (
@@ -208,6 +214,15 @@ def language_banner(language: str, *, items: bool = True) -> str:
     return "Reply in English only."
 
 
+_WORLD = (
+    "Bram forges. Mira rents beds and rooms at the Oak and Lantern, "
+    "not meals. Rowan the elder does not carve; turn the lost hammer "
+    "in to him, not to Bram.\n"
+    "If the reward was already paid, say the 8-gold reward was "
+    "already paid. Do not give that figure as their total gold.\n"
+)
+
+
 def _speech_rules(
     player_text: str,
     language: str,
@@ -215,20 +230,24 @@ def _speech_rules(
     granted_note: str = "",
     news_note: str = "",
     ledger_note: str = "",
+    recall_note: str = "",
 ) -> str:
     spoken = player_text.strip() or "(empty)"
     paid = f"{paid_note}\n" if paid_note else ""
     granted = f"{granted_note}\n" if granted_note else ""
     ledger = f"{ledger_note}\n" if ledger_note else ""
     news = f"{news_note}\n" if news_note else ""
+    recall = f"{recall_note}\n" if recall_note else ""
     return (
         "# This turn\n"
         f"{language_banner(language)}\n"
+        f"{_WORLD}"
         f"The player said: {spoken}\n"
         f"{paid}"
         f"{granted}"
         f"{ledger}"
         f"{news}"
+        f"{recall}"
         "Speak in one or two sentences. No asterisks or stage directions.\n"
         "Emotion: neutral, happy, annoyed, grateful, warm, suspicious. "
         "affinity_delta is an integer from -3 to 3.\n"

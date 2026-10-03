@@ -72,7 +72,9 @@ def test_reward_is_paid_once_from_config(tmp_path: Path) -> None:
     state = GameState(tmp_path / "game_state.json", config)
     assert "Only Rowan" in state.complete_quest("bram", "lost_hammer")
     state.accept_quest("rowan", "lost_hammer")
-    assert "not carrying" in state.complete_quest("rowan", "lost_hammer")
+    missing = state.complete_quest("rowan", "lost_hammer")
+    assert "not carrying" in missing
+    assert "bring it to Bram" in missing
     assert state.gold == 12
 
     state.data["player"]["inventory"].append("forging hammer")
@@ -81,6 +83,7 @@ def test_reward_is_paid_once_from_config(tmp_path: Path) -> None:
     assert state.gold == 20
     assert "forging hammer" not in state.inventory
     again = state.complete_quest("rowan", "lost_hammer")
+    assert "8-gold reward was already paid" in again
     assert "No further reward" in again
     assert state.gold == 20
 
@@ -493,6 +496,8 @@ def test_hammer_fact_follows_the_quest(tmp_path: Path) -> None:
     assert "carrying the forging hammer" in carried
     assert "complete_quest" in carried
     assert "was returned" in hammer_fact("completed")
+    assert "8-gold reward was already paid" in hammer_fact("completed")
+    assert "bring it to Bram" in hammer_fact("accepted", "with_mira", "rowan")
     assert "stays lost" not in hammer_fact("completed")
     session, model = _session(tmp_path)
     asyncio.run(session.talk("bram", "Hello."))

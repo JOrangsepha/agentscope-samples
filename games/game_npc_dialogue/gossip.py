@@ -35,7 +35,7 @@ def load_entries(save_dir: str | Path) -> list[dict]:
     return []
 
 
-def prompt_block(save_dir: str | Path, listener_name: str = "") -> str:
+def prompt_block(save_dir: str | Path) -> str:
     """Public rumors for the system prompt. Empty towns say so."""
     public = _public_entries(save_dir)
     if not public:
@@ -43,17 +43,12 @@ def prompt_block(save_dir: str | Path, listener_name: str = "") -> str:
             "None yet. Insults and quest news become public. "
             "A player's name, trade, gold, and inventory stay private."
         )
-    lines = [
-        _heard_by_listener(str(entry.get("text", "")), listener_name)
-        for entry in public[-6:]
-    ]
+    lines = [str(entry.get("text", "")) for entry in public[-6:]]
     joined = "\n".join(f"- {line}" for line in lines if line)
     return (
         f"{joined}\n"
-        "Each line names who heard it. A line that starts with "
-        "'I heard' is yours; do not name yourself instead. "
-        "An insult was said by the player, not by that resident. "
-        "Do not invent a rumor or repeat private memory."
+        "Each line names who heard it. An insult was said by "
+        "the player, not by that resident. Do not invent a rumor."
     )
 
 
@@ -175,15 +170,12 @@ def news_to_repeat(
     if not public:
         return ""
     chosen = [
-        _heard_by_listener(
-            str(public[-1].get("text", "")).strip(),
-            listener_name,
-        ),
+        _to_you(str(public[-1].get("text", "")).strip(), listener_name),
     ]
     insults = [entry for entry in public if entry.get("kind") == "insult"]
     target = ""
     if insults:
-        insult = _heard_by_listener(
+        insult = _to_you(
             str(insults[-1].get("text", "")).strip(),
             listener_name,
         )
@@ -196,11 +188,11 @@ def news_to_repeat(
     who = _insult_target_sentence(language, listener_name, target)
     tail = f"{who} {facts}".strip()
     if language == "Simplified Chinese":
-        prefix = "玩家在打听消息。必须复述这些公开事实，并点名听见的人。"
+        prefix = "你在打听消息。用自己的口气说，不要逐条念。"
         return f"{prefix}{tail}"
     return (
-        "The player asks for news. Repeat these public facts and "
-        f"name who heard them. {tail}"
+        "You asked for news. Retell this in your own words, "
+        f"not as a list. {tail}"
     )
 
 
@@ -216,44 +208,44 @@ def _insult_target_sentence(
     same = bool(listener) and listener == target_name
     if language == "Simplified Chinese":
         if same:
-            sentence = f"玩家侮辱的是你（{target_name}），你听见了。" "不要说成别人被骂。"
+            sentence = "你骂的是我，我听见了。不要说成别人被骂。"
         elif listener:
             sentence = (
-                f"玩家侮辱的是{target_name}，{target_name}听见了。"
+                f"你侮辱的是{target_name}，{target_name}听见了。"
                 f"你是{listener}，不是被骂的人。不要说这句是在骂你。"
             )
         else:
             sentence = (
-                f"玩家侮辱的是{target_name}，{target_name}听见了。"
+                f"你侮辱的是{target_name}，{target_name}听见了。"
                 f"听的人不是被骂的人，除非听的人就是{target_name}。"
             )
         return sentence
     if same:
         sentence = (
-            f"The player insulted you, {target_name}; you heard it. "
+            "You insulted me; I heard it. "
             "Do not name someone else as the target."
         )
     elif listener:
         sentence = (
-            f"The player insulted {target_name}; {target_name} heard it. "
+            f"You insulted {target_name}; {target_name} heard it. "
             f"You are {listener}. You were not insulted. "
             "Do not say the insult was about you."
         )
     else:
         sentence = (
-            f"The player insulted {target_name}; {target_name} heard it. "
+            f"You insulted {target_name}; {target_name} heard it. "
             "The listener is not the target unless they are that person."
         )
     return sentence
 
 
-def _heard_by_listener(text: str, listener_name: str) -> str:
-    """Use 'I heard' when this resident is the one who heard it."""
+def _to_you(text: str, listener_name: str) -> str:
+    """Address the player as you. Only the news injection uses this."""
     listener = listener_name.strip()
-    prefix = f"{listener} heard"
-    if listener and text.startswith(prefix):
-        return "I heard" + text[len(prefix) :]
-    return text
+    own = f"{listener} heard the player"
+    if listener and text.startswith(own):
+        return "I heard you" + text[len(own) :]
+    return text.replace(" heard the player ", " heard you ")
 
 
 def _public_entries(save_dir: str | Path) -> list[dict]:

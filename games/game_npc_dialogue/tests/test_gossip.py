@@ -15,6 +15,20 @@ from npc_config import load_town_config
 from session import TownSession
 
 
+def _assert_news_addresses_you(system: str) -> None:
+    """The news injection says you, and asks for a retelling."""
+    assert "Bram heard you say" in system
+    assert "asked for news" in system
+    assert "own words" in system
+    assert "not as a list" in system
+    news_part = system.split("You asked for news", 1)[-1].split(
+        "Speak in one",
+        1,
+    )[0]
+    assert "the player" not in news_part
+    assert "玩家" not in news_part
+
+
 def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     """Bram's grudge is town talk. The player's trade is not."""
     session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
@@ -36,8 +50,8 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     speak = [call for call in other.model.calls if call["phase"] == "speak"]
     system = speak[-1]["system"]
     assert "Bram heard the player say" in system
-    assert "asks for news" in system
-    assert "The player insulted Bram" in system
+    _assert_news_addresses_you(system)
+    assert "You insulted Bram" in system
     assert "You are Mira" in system
     assert "You were not insulted" in system
     assert asks_for_news("What news have you heard about me?")
@@ -80,9 +94,11 @@ def test_the_hearer_says_i_heard(tmp_path: Path) -> None:
     asyncio.run(session.talk("rowan", "What's new around here?"))
     speak = [call for call in session.model.calls if call["phase"] == "speak"]
     note = speak[-1]["system"]
-    assert "I heard the player accepted The Lost Hammer" in note
-    assert "Rowan heard the player" not in note
-    assert "do not name yourself" in note
+    assert "I heard you accepted The Lost Hammer" in note
+    assert "own words" in note
+    assert "not as a list" in note
+    assert "Rowan heard the player accepted" in note
+    assert "repeat private memory" not in note
 
 
 def test_an_offer_of_help_is_not_a_news_question() -> None:
@@ -107,7 +123,7 @@ def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
         call for call in session.model.calls if call["phase"] == "speak"
     ]
     note = rowan_speak[-1]["system"]
-    assert "The player insulted Bram" in note
+    assert "You insulted Bram" in note
     assert "You are Rowan" in note
     assert "You were not insulted" in note
     assert "Do not say the insult was about you" in note
@@ -121,8 +137,8 @@ def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
         call for call in session.model.calls if call["phase"] == "speak"
     ]
     heard = bram_speak[-1]["system"]
-    assert "The player insulted you, Bram" in heard
-    assert "you heard it" in heard
+    assert "You insulted me" in heard
+    assert "I heard it" in heard
     assert "You were not insulted" not in heard
 
     fresh = TownSession(
@@ -136,7 +152,7 @@ def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
         call for call in fresh.model.calls if call["phase"] == "speak"
     ]
     quest_note = mira_speak[-1]["system"]
-    assert "asks for news" in quest_note
+    assert "asked for news" in quest_note
     assert "accepted The Lost Hammer" in quest_note
     assert "insulted" not in quest_note
 
@@ -145,7 +161,7 @@ def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
         call for call in session.model.calls if call["phase"] == "speak"
     ]
     zh_note = zh_speak[-1]["system"]
-    assert "玩家侮辱的是Bram" in zh_note
+    assert "你侮辱的是Bram" in zh_note
     assert "你是Rowan，不是被骂的人" in zh_note
     assert "不要说这句是在骂你" in zh_note
 

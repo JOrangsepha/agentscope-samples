@@ -23,7 +23,7 @@ from gossip import (
     prompt_block,
     record_public_events,
 )
-from memory_store import remember_fact
+from memory_store import asks_for_recall, recall_note, remember_fact
 from npc_config import TownConfig
 from prompts import (
     NPC_MEMORY_INSTRUCTIONS,
@@ -159,6 +159,14 @@ class TownSession:
                 gold_changed=gold_changed,
                 items_changed=items_changed,
             )
+        remembered = ""
+        if asks_for_recall(player_text):
+            remembered = recall_note(
+                self.memory_dir(npc_id),
+                self.save_dir,
+                npc_id,
+                language,
+            )
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
@@ -168,8 +176,15 @@ class TownSession:
             granted_note=_granted_note(granted, language),
             news_note=news_note,
             ledger_note=ledger_note,
+            remembered=remembered,
         )
-        cue = _speak_cue(player_text, language, news_note, ledger_note)
+        cue = _speak_cue(
+            player_text,
+            language,
+            news_note,
+            ledger_note,
+            remembered,
+        )
         message = await speaker.reply(
             UserMsg(name="director", content=cue),
             structured_schema=NpcTurn,
@@ -227,6 +242,7 @@ class TownSession:
         granted_note: str = "",
         news_note: str = "",
         ledger_note: str = "",
+        remembered: str = "",
     ) -> Agent:
         state = self._agent_states.setdefault(npc_id, AgentState())
         state.permission_context.mode = PermissionMode.BYPASS
@@ -258,6 +274,7 @@ class TownSession:
                 granted_note=granted_note,
                 news_note=news_note,
                 ledger_note=ledger_note,
+                remembered=remembered,
             ),
             model=self.model,
             toolkit=toolkit,
@@ -278,6 +295,7 @@ class TownSession:
         granted_note: str = "",
         news_note: str = "",
         ledger_note: str = "",
+        remembered: str = "",
     ) -> str:
         npc = self.config.npc(npc_id)
         return build_system_prompt(
@@ -298,7 +316,8 @@ class TownSession:
             granted_note=granted_note,
             news_note=news_note,
             ledger_note=ledger_note,
-            rumors=prompt_block(self.save_dir, npc.name),
+            recall_note=remembered,
+            rumors=prompt_block(self.save_dir),
         )
 
 
@@ -529,6 +548,7 @@ def _speak_cue(
     language: str,
     news_note: str = "",
     ledger_note: str = "",
+    remembered: str = "",
 ) -> str:
     """Turn-local instruction. It is removed from history after the reply."""
     extra = ""
@@ -536,6 +556,8 @@ def _speak_cue(
         extra += f"\n{ledger_note}"
     if news_note:
         extra += f"\n{news_note}"
+    if remembered:
+        extra += f"\n{remembered}"
     return (
         f"{SPEAK_CUE}\n"
         f"{language_banner(language, items=False)}\n"

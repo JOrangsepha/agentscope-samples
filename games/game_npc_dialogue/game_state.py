@@ -208,7 +208,13 @@ class GameState:
             return refusal
         assert quest is not None and rule is not None
         if self._reward_already_paid(quest):
-            return f"Quest {quest_id} is already completed. No further reward."
+            paid = ""
+            if rule.reward_gold:
+                paid = f" The {rule.reward_gold}-gold reward was already paid."
+            return (
+                f"Quest {quest_id} is already completed.{paid} "
+                "No further reward."
+            )
         if quest.get("status") != "accepted":
             return f"Quest {quest_id} is not accepted yet."
         missing = self._missing_proof(rule)
@@ -303,7 +309,8 @@ class GameState:
         if required and required not in self.inventory:
             return (
                 f"Cannot complete {rule.quest_id}: the player is not "
-                f"carrying {required}."
+                f"carrying {required}. Turn it in to Rowan when they "
+                "have it. Do not say to bring it to Bram."
             )
         return ""
 
