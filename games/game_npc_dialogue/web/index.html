@@ -5,204 +5,1564 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Millhaven</title>
   <style>
-    :root {
-      color-scheme: light;
-      --ink: #1c1915;
-      --muted: #5c5348;
-      --paper: #f4efe4;
-      --panel: #fffaf2;
-      --line: #d9cbb6;
-      --pine: #1f4a3a;
-      --pine-2: #2f6a52;
-      --accent: #8c3d2f;
-    }
     * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
-      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
-      color: var(--ink);
-      background: var(--paper);
-    }
-    header {
-      background: var(--pine);
-      color: #f4efe4;
-      padding: 16px 22px;
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 16px;
-    }
-    header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
-    header p { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; opacity: 0.85; }
-    main {
       display: grid;
-      grid-template-columns: 200px minmax(0, 1fr) 280px;
-      gap: 16px;
-      padding: 16px;
-      min-height: calc(100vh - 68px);
+      grid-template-columns: 220px minmax(0, 1fr) 220px;
+      height: 100%;
+      overflow: hidden;
+      color: #f3e2b8;
+      background: #2c1c12;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif;
+      font-size: 15px;
+      line-height: 1.35;
     }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px;
-    }
-    h2 {
-      margin: 0 0 10px;
-      font-size: 14px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      font-family: ui-sans-serif, system-ui, sans-serif;
-    }
-    button.npc {
-      display: block;
-      width: 100%;
-      text-align: left;
-      margin: 0 0 8px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #fff;
-      font: inherit;
-      cursor: pointer;
-    }
-    button.npc.active { border-color: var(--pine); background: #e7f2ec; }
-    button.npc small { display: block; color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
-    #log {
-      min-height: 320px;
-      max-height: calc(100vh - 240px);
-      overflow: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .bubble { padding: 8px 10px; border-radius: 8px; }
-    .bubble.you { background: #efe6d6; }
-    .bubble.npc { background: #e7f2ec; }
-    .meta { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; color: var(--muted); }
-    form { display: flex; gap: 8px; margin-top: 12px; }
-    input[type="text"] {
-      flex: 1;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      font: inherit;
-      background: #fff;
-    }
-    button.send, button.wait {
+    button, input { font: inherit; color: inherit; border-radius: 0; }
+    button {
+      background: #6b4428;
+      color: #f3e2b8;
       border: 0;
-      border-radius: 8px;
-      padding: 10px 14px;
-      color: white;
-      background: var(--pine);
-      font: inherit;
+      box-shadow: 0 0 0 2px #2a1a10;
+      padding: 6px 10px;
       cursor: pointer;
     }
-    button.wait { background: var(--accent); }
-    ul { margin: 0; padding-left: 18px; }
-    li { margin: 4px 0; }
-    .stat {
-      font-family: ui-sans-serif, system-ui, sans-serif;
-      font-size: 14px;
-      margin: 0 0 8px;
+    button:disabled { cursor: default; opacity: 0.6; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 18px; font-weight: 700; }
+    h2 {
+      margin: 8px 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #e0c080;
     }
-    @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; }
-      header { flex-direction: column; align-items: flex-start; }
-      #log { max-height: 50vh; }
+    #left-hud, #right-hud {
+      min-height: 0;
+      overflow: auto;
+      padding: 8px;
+    }
+    .panel {
+      background: #3a2618;
+      box-shadow: inset 0 0 0 3px #6b4428, inset 0 0 0 5px #24160e;
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+    .gold-panel { display: flex; align-items: center; gap: 8px; }
+    #coin { width: 32px; height: 32px; image-rendering: pixelated; }
+    #gold { display: block; font-size: 22px; line-height: 1; }
+    #who { display: block; font-size: 13px; }
+    #slots { display: flex; flex-wrap: wrap; gap: 4px; }
+    .slot {
+      width: 36px;
+      height: 36px;
+      background: #24160e;
+      box-shadow: inset 0 0 0 2px #6b4428;
+      display: grid;
+      place-items: center;
+    }
+    .slot canvas { width: 32px; height: 32px; image-rendering: pixelated; }
+    #pack-names { margin-top: 6px; font-size: 13px; }
+    #clock-day { font-size: 16px; margin-top: 4px; }
+    #clock-time { font-size: 20px; }
+    #model-name { font-size: 11px; color: #e0c8a0; margin-top: 2px; word-break: break-word; }
+    #sleep { width: 100%; margin-top: 8px; }
+    .help { margin-top: 8px; font-size: 12px; color: #e0c8a0; }
+    .parchment {
+      background: #f3e2b8;
+      color: #3a2416;
+      padding: 6px;
+    }
+    .quest { display: flex; justify-content: space-between; gap: 6px; }
+    .quest span { font-size: 12px; }
+    .friend { margin: 4px 0 6px; }
+    .fname { display: block; margin-bottom: 2px; }
+    .hearts, .mini-hearts { display: flex; flex-wrap: wrap; gap: 1px; }
+    .hearts canvas, .mini-hearts canvas {
+      width: 14px;
+      height: 12px;
+      image-rendering: pixelated;
+    }
+    #stage {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      background: #24180f;
+    }
+    #town {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: #4f8a3c;
+      box-shadow: 0 0 0 4px #6b4428, 0 0 0 8px #2a1a10;
+      touch-action: none;
+      cursor: default;
+    }
+    #hint {
+      position: fixed;
+      z-index: 4;
+      transform: translate(-50%, -100%);
+      background: #f3e2b8;
+      color: #3a2416;
+      box-shadow: 0 0 0 3px #3a2414;
+      padding: 4px 8px 5px;
+      text-align: center;
+      pointer-events: none;
+      font-size: 14px;
+      line-height: 1.3;
+    }
+    #hint[hidden] { display: none !important; }
+    #hint b { display: block; }
+    #dialogue {
+      position: fixed;
+      z-index: 5;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      width: min(560px, calc(100% - 16px));
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+      background: #f3e2b8;
+      color: #3a2416;
+      padding: 16px 12px 10px;
+      box-shadow: 0 0 0 4px #6b4428, 0 0 0 8px #2a1a10;
+    }
+    #dialogue[hidden] { display: none !important; }
+    #portrait {
+      flex: none;
+      background: #e7d2a4;
+      box-shadow: 0 0 0 3px #5c3a22, 0 0 0 5px #2a1a10;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #speech { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: -28px;
+      margin-bottom: 4px;
+      flex-wrap: wrap;
+    }
+    #nameplate {
+      background: #5c3a22;
+      color: #f3e2b8;
+      padding: 3px 8px;
+      box-shadow: 0 0 0 2px #2a1a10;
+    }
+    #roleplate { font-size: 12px; color: #6b4428; }
+    #close-talk { margin-left: auto; padding: 3px 8px; }
+    #reply {
+      flex: 1;
+      min-height: 4.6em;
+      font-size: 16px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #talk-form { display: flex; gap: 6px; margin-top: 6px; }
+    #line {
+      flex: 1;
+      min-width: 0;
+      background: #fff8e8;
+      color: #3a2416;
+      border: 0;
+      box-shadow: inset 0 0 0 2px #8a6a40;
+      padding: 6px 8px;
+      font-size: 16px;
+    }
+    #line:focus { outline: 2px solid #6b4428; outline-offset: 1px; }
+    #toast {
+      position: fixed;
+      z-index: 8;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: min(480px, calc(100% - 24px));
+      background: #6b3030;
+      color: #f3e2b8;
+      box-shadow: 0 0 0 3px #2a1414;
+      padding: 8px 12px;
+    }
+    #toast[hidden] { display: none !important; }
+    #paper {
+      position: fixed;
+      inset: 0;
+      z-index: 6;
+      background: rgba(20, 14, 8, 0.82);
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    #paper[hidden] { display: none !important; }
+    #paper article {
+      width: min(460px, 100%);
+      max-height: min(70vh, 520px);
+      overflow: auto;
+      background: #f4e6c4;
+      color: #2a1c12;
+      box-shadow: 0 0 0 4px #6b4428, 0 0 0 8px #2a1a10;
+      padding: 16px 18px 14px;
+    }
+    #paper h2 {
+      text-align: center;
+      color: #2a1c12;
+      font-size: 18px;
+      letter-spacing: 0.14em;
+      margin: 0;
+    }
+    #paper-day { text-align: center; margin: 0; }
+    .rule { height: 2px; background: #2a1c12; margin: 8px 0; }
+    #paper-body {
+      white-space: pre-wrap;
+      font-size: 16px;
+      line-height: 1.5;
+      margin: 0 0 12px;
+    }
+    #paper-close { display: block; margin: 0 auto; }
+    @media (max-width: 1000px) {
+      body {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto minmax(0, 1fr);
+      }
+      #left-hud, #right-hud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+      }
+      #left-hud { grid-column: 1; grid-row: 1; }
+      #right-hud { grid-column: 1; grid-row: 2; }
+      #stage { grid-column: 1; grid-row: 3; }
+      .panel { margin: 0; flex: 1 1 160px; }
+      #dialogue { width: calc(100% - 12px); padding-top: 18px; }
+      #portrait { width: 72px !important; height: 88px !important; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Millhaven</h1>
-    <p id="model">loading…</p>
-  </header>
-  <main>
-    <section>
-      <h2>Residents</h2>
-      <div id="npcs"></div>
+  <aside id="left-hud">
+    <section class="panel gold-panel">
+      <canvas id="coin" width="16" height="16"></canvas>
+      <div>
+        <strong id="gold">0</strong>
+        <span id="who">…</span>
+      </div>
     </section>
-    <section>
-      <h2>Conversation</h2>
-      <div id="log"></div>
-      <form id="talk">
-        <input id="line" type="text" placeholder="Say something…" autocomplete="off" />
-        <button class="send" type="submit">Say</button>
-        <button class="wait" id="wait" type="button">Wait</button>
+    <section class="panel">
+      <h2>Pack</h2>
+      <div id="slots"></div>
+      <p id="pack-names"></p>
+    </section>
+  </aside>
+  <div id="stage">
+    <canvas id="town" width="384" height="256"></canvas>
+  </div>
+  <aside id="right-hud">
+    <section class="panel">
+      <h1 id="town-name">Millhaven</h1>
+      <p id="clock-day">Day 1</p>
+      <p id="clock-time">8:00 AM</p>
+      <p id="model-name"></p>
+      <button type="button" id="sleep">Sleep / Next day</button>
+      <p class="help">WASD or arrows move. Click the ground to walk. E or click talks. Space skips a line.</p>
+    </section>
+    <section class="panel">
+      <h2>Quest</h2>
+      <div id="quest-body" class="parchment"></div>
+      <h2>Friends</h2>
+      <div id="friends"></div>
+    </section>
+  </aside>
+  <div id="hint" hidden>
+    <b id="hint-name"></b>
+    <span id="hint-text">Press E / click to talk</span>
+  </div>
+  <div id="dialogue" hidden>
+    <canvas id="portrait" width="36" height="44"></canvas>
+    <div id="speech">
+      <div id="name-row">
+        <strong id="nameplate"></strong>
+        <span id="roleplate"></span>
+        <div id="hearts" class="hearts"></div>
+        <button type="button" id="close-talk">Close</button>
+      </div>
+      <div id="reply" aria-live="polite"></div>
+      <form id="talk-form">
+        <input id="line" type="text" autocomplete="off" enterkeyhint="send" />
+        <button id="say" type="submit">Say</button>
       </form>
-    </section>
-    <section>
-      <h2>Town ledger</h2>
-      <p class="stat" id="player"></p>
-      <p class="stat" id="gold"></p>
-      <h2>Inventory</h2>
-      <ul id="inventory"></ul>
-      <h2>Quests</h2>
-      <ul id="quests"></ul>
-      <h2>Affinity</h2>
-      <ul id="affinity"></ul>
-      <h2>Gossip</h2>
-      <ul id="gossip"></ul>
-    </section>
-  </main>
+    </div>
+  </div>
+  <div id="paper" hidden>
+    <article>
+      <h2>MILLHAVEN NOTICE</h2>
+      <p id="paper-day"></p>
+      <div class="rule"></div>
+      <p id="paper-body"></p>
+      <button type="button" id="paper-close">Close</button>
+    </article>
+  </div>
+  <div id="toast" hidden role="alert"></div>
   <script>
-    let current = "bram";
-    const log = document.getElementById("log");
+    const WORLD_W = 384;
+    const WORLD_H = 256;
+    const TALK_RANGE = 36;
+    const SPEED = 92;
+    const FORGE = { x: 16, y: 34, w: 96, h: 78 };
+    const ELDER = { x: 136, y: 36, w: 96, h: 76 };
+    const INN = { x: 256, y: 30, w: 112, h: 82 };
+    const BED = { x: 346, y: 118, w: 18, h: 14 };
+    const ANVIL = { x: 114, y: 116, w: 16, h: 14 };
+    const BOARD = { x: 234, y: 86, w: 22, h: 30 };
+    const WELL = { x: 118, y: 186, w: 22, h: 18 };
+    const SMOKE = { x: 34, y: 22 };
+    const LAMP = { x: 286, y: 72 };
 
-    function addBubble(kind, title, body) {
-      const node = document.createElement("div");
-      node.className = "bubble " + kind;
-      node.innerHTML = "<div class='meta'></div><div></div>";
-      node.querySelector(".meta").textContent = title;
-      node.querySelector("div:last-child").textContent = body;
-      log.appendChild(node);
-      log.scrollTop = log.scrollHeight;
+    const LOOK = {
+      bram: {
+        hair: "#2a241c", hair2: "#3d3428", skin: "#e0a878", skin2: "#c48b5a",
+        cloth: "#4a5568", accent: "#6b3e28", pants: "#3a322c", shoe: "#241c18",
+        wide: true, hairStyle: "short", prop: "hammer",
+      },
+      mira: {
+        hair: "#a85a28", hair2: "#c4783a", skin: "#f0c4a0", skin2: "#d4a074",
+        cloth: "#8d3b4a", accent: "#f3e6c8", pants: "#8d3b4a", shoe: "#4a2c28",
+        wide: false, hairStyle: "long", prop: null,
+      },
+      rowan: {
+        hair: "#d4d0c8", hair2: "#8e8a84", skin: "#e8c8a8", skin2: "#c8a888",
+        cloth: "#3e5c48", accent: "#d9c8a4", pants: "#3e5c48", shoe: "#2a2420",
+        wide: false, tall: true, beard: true, hairStyle: "grey", prop: "staff",
+      },
+      kestrel: {
+        hair: "#6b3e22", hair2: "#8a5430", skin: "#f0c09a", skin2: "#d4a06a",
+        cloth: "#2f6b4a", accent: "#e0b84a", pants: "#4a3a2c", shoe: "#3a2a22",
+        wide: false, hairStyle: "cap", prop: "saw",
+      },
+    };
+
+    const EMOTE_FOR = {
+      happy: "music",
+      warm: "heart",
+      grateful: "heart",
+      annoyed: "anger",
+      suspicious: "question",
+    };
+
+    const DIR_FROM_CODE = {
+      ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+      KeyA: "left", KeyD: "right", KeyW: "up", KeyS: "down",
+    };
+
+    const canvas = document.getElementById("town");
+    const ctx = canvas.getContext("2d");
+    const homes = [
+      { id: "bram", x: FORGE.x + Math.floor(FORGE.w / 2), y: FORGE.y + FORGE.h + 18 },
+      { id: "rowan", x: ELDER.x + Math.floor(ELDER.w / 2), y: ELDER.y + ELDER.h + 18 },
+      { id: "mira", x: INN.x + Math.floor(INN.w / 2), y: INN.y + INN.h + 18 },
+    ];
+
+    let current = "bram";
+    let picked = false;
+    let gameState = null;
+    let residentById = {};
+    let day = 1;
+    let clockMin = 8 * 60;
+    let time = 0;
+    let lastTick = 0;
+    let dialogueOpen = false;
+    let paperOpen = false;
+    let loading = false;
+    let busyId = null;
+    let goal = null;
+    let stuck = 0;
+    let toastTimer = 0;
+    let replyFull = "";
+    let replyShown = 0;
+    let replyTimer = 0;
+    const held = { left: false, right: false, up: false, down: false };
+    const player = { x: 188, y: 204, dir: "up", moving: false };
+    const sheetCache = {};
+    const portraitCache = {};
+    const heartCache = {};
+    const iconCache = {};
+    let background = null;
+    let solids = [];
+
+    function hash(x, y) {
+      let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return (n ^ (n >>> 16)) >>> 0;
     }
 
-    function fillList(id, items) {
-      const node = document.getElementById(id);
-      node.replaceChildren();
-      items.forEach((text) => {
-        const li = document.createElement("li");
-        li.textContent = text;
-        node.appendChild(li);
+    function rect(g, x, y, w, h, color) {
+      g.fillStyle = color;
+      g.fillRect(x, y, w, h);
+    }
+
+    function px(g, x, y, color) {
+      g.fillStyle = color;
+      g.fillRect(x, y, 1, 1);
+    }
+
+    function isPath(x, y) {
+      if (x < 0 || y < 0 || x >= WORLD_W || y >= WORLD_H) return false;
+      if (y >= 118 && y < 152 && x >= 6 && x < 378) return true;
+      if (y >= 104 && y < 118 && x >= 44 && x < 84) return true;
+      if (y >= 104 && y < 118 && x >= 164 && x < 204) return true;
+      if (y >= 104 && y < 118 && x >= 292 && x < 332) return true;
+      if (y >= 152 && y < 236 && x >= 170 && x < 208) return true;
+      return false;
+    }
+
+    function isPond(x, y) {
+      const dx = (x - 48) / 30;
+      const dy = (y - 206) / 15;
+      return dx * dx + dy * dy <= 1;
+    }
+
+    function inBox(x, y, box) {
+      return x >= box.x && y >= box.y && x < box.x + box.w && y < box.y + box.h;
+    }
+
+    function outline(g, w, h) {
+      const img = g.getImageData(0, 0, w, h);
+      const src = img.data;
+      const out = new Uint8ClampedArray(src);
+      for (let y = 0; y < h; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          const i = (y * w + x) * 4;
+          if (src[i + 3] > 0) continue;
+          let edge = false;
+          if (x > 0 && src[i - 4 + 3] > 0) edge = true;
+          if (x + 1 < w && src[i + 4 + 3] > 0) edge = true;
+          if (y > 0 && src[i - w * 4 + 3] > 0) edge = true;
+          if (y + 1 < h && src[i + w * 4 + 3] > 0) edge = true;
+          if (edge) {
+            out[i] = 44;
+            out[i + 1] = 28;
+            out[i + 2] = 18;
+            out[i + 3] = 255;
+          }
+        }
+      }
+      img.data.set(out);
+      g.putImageData(img, 0, 0);
+    }
+
+    function paintFront(g, s, frame) {
+      const o = frame ? 0 : 1;
+      const top = s.tall ? 0 : 2;
+      const y0 = top + o;
+      if (s.hairStyle === "long") rect(g, 3, y0 + 4, 10, 12, s.hair);
+      if (s.beard) rect(g, 4, y0 + 6, 8, 5, s.hair2);
+      rect(g, 4, y0 + 3, 8, 7, s.skin);
+      px(g, 3, y0 + 6, s.skin2);
+      px(g, 12, y0 + 6, s.skin2);
+      if (s.hairStyle === "cap") {
+        rect(g, 3, y0 + 1, 10, 3, s.hair);
+        rect(g, 2, y0 + 3, 12, 1, s.hair2);
+      } else if (s.hairStyle === "grey") {
+        rect(g, 3, y0 + 2, 10, 2, s.hair);
+        rect(g, 3, y0 + 3, 2, 4, s.hair);
+        rect(g, 11, y0 + 3, 2, 4, s.hair);
+      } else if (s.hairStyle === "long") {
+        rect(g, 3, y0 + 1, 10, 4, s.hair);
+        rect(g, 4, y0 + 1, 8, 2, s.hair2);
+      } else {
+        rect(g, 3, y0 + 1, 10, 4, s.hair);
+        rect(g, 4, y0 + 1, 8, 1, s.hair2);
+      }
+      rect(g, 5, y0 + 6, 2, 2, "#2a1c14");
+      rect(g, 9, y0 + 6, 2, 2, "#2a1c14");
+      if (!s.beard) {
+        px(g, 7, y0 + 8, "#a86858");
+        px(g, 8, y0 + 8, "#a86858");
+      }
+      const bodyW = s.wide ? 12 : 10;
+      const bodyX = s.wide ? 2 : 3;
+      rect(g, bodyX, y0 + 10, bodyW, 6, s.cloth);
+      if (s.wide) {
+        rect(g, 5, y0 + 11, 6, 5, s.accent);
+        px(g, 7, y0 + 12, "#e0b84a");
+      } else if (s.hairStyle === "long") {
+        rect(g, 3, y0 + 14, 10, 4, s.cloth);
+        rect(g, 5, y0 + 11, 6, 6, s.accent);
+      } else if (s.beard) {
+        rect(g, 3, y0 + 10, 10, 9, s.cloth);
+        rect(g, 6, y0 + 11, 4, 7, s.accent);
+      } else {
+        rect(g, 4, y0 + 14, 8, 2, s.accent);
+        px(g, 7, y0 + 14, "#fff1c4");
+      }
+      rect(g, bodyX, y0 + 11, 2, 4, s.cloth);
+      rect(g, bodyX + bodyW - 2, y0 + 11, 2, 4, s.cloth);
+      px(g, bodyX, y0 + 15, s.skin);
+      px(g, bodyX + bodyW - 1, y0 + 15, s.skin);
+      const spread = frame ? 1 : 0;
+      if (s.hairStyle === "long") {
+        rect(g, 5, 20, 2, 2, s.shoe);
+        rect(g, 9, 20, 2, 2, s.shoe);
+      } else if (s.beard) {
+        rect(g, 5, 19, 2, 3, s.shoe);
+        rect(g, 9, 19, 2, 3, s.shoe);
+      } else {
+        rect(g, 5 - spread, 17, 3, 4, s.pants);
+        rect(g, 8 + spread, 17, 3, 4, s.pants);
+        rect(g, 5 - spread, 21, 3, 2, s.shoe);
+        rect(g, 8 + spread, 21, 3, 2, s.shoe);
+      }
+      if (s.prop === "hammer") {
+        rect(g, 13, y0 + 8, 2, 8, "#6b4428");
+        rect(g, 12, y0 + 6, 4, 3, "#3a3e44");
+        px(g, 13, y0 + 6, "#c8cdd2");
+      } else if (s.prop === "staff") {
+        rect(g, 14, y0 + 4, 1, 16, "#6b4428");
+        px(g, 14, y0 + 4, "#e0b84a");
+      } else if (s.prop === "saw") {
+        rect(g, 13, y0 + 12, 1, 6, "#c4a05a");
+        rect(g, 14, y0 + 14, 2, 2, "#8a929c");
+      }
+    }
+
+    function paintSide(g, s, frame) {
+      const o = frame ? 0 : 1;
+      rect(g, 5, 3 + o, 6, 6, s.skin);
+      rect(g, 4, 2 + o, 6, 4, s.hair);
+      px(g, 9, 6 + o, "#2a1c14");
+      if (s.hairStyle === "long") rect(g, 3, 6 + o, 3, 10, s.hair);
+      if (s.beard) rect(g, 8, 7 + o, 3, 3, s.hair2);
+      if (s.hairStyle === "cap") {
+        rect(g, 4, 1 + o, 8, 3, s.hair);
+        rect(g, 8, 3 + o, 4, 1, s.hair2);
+      }
+      rect(g, 5, 10 + o, 6, 6, s.cloth);
+      if (s.hairStyle === "long") rect(g, 6, 12 + o, 3, 5, s.accent);
+      if (s.wide) rect(g, 6, 12 + o, 4, 4, s.accent);
+      if (s.hairStyle === "cap") rect(g, 5, 14 + o, 6, 2, s.accent);
+      rect(g, 4, 11 + o, 2, 4, s.cloth);
+      px(g, 4, 15 + o, s.skin);
+      const step = frame ? 1 : 0;
+      rect(g, 5, 16, 3, 5, s.pants);
+      rect(g, 8, 16 + step, 3, 4, s.pants);
+      rect(g, 5, 21, 3, 2, s.shoe);
+      rect(g, 8, 21, 3, 2, s.shoe);
+      if (s.prop === "hammer") {
+        rect(g, 2, 10 + o, 2, 3, "#3a3e44");
+        rect(g, 3, 12 + o, 1, 6, "#6b4428");
+      }
+    }
+
+    function paintBack(g, s, frame) {
+      const o = frame ? 0 : 1;
+      rect(g, 4, 2 + o, 8, 8, s.hair);
+      if (s.hairStyle === "long") rect(g, 3, 6 + o, 10, 8, s.hair);
+      if (s.hairStyle === "cap") {
+        rect(g, 3, 1 + o, 10, 3, s.hair);
+        rect(g, 2, 3 + o, 12, 1, s.hair2);
+      }
+      const bodyW = s.wide ? 12 : 10;
+      const bodyX = s.wide ? 2 : 3;
+      rect(g, bodyX, 10 + o, bodyW, 7, s.cloth);
+      if (!s.beard && s.hairStyle !== "long") {
+        rect(g, 5, 17, 3, 4, s.pants);
+        rect(g, 8, 17, 3, 4, s.pants);
+        rect(g, 5, 21, 3, 2, s.shoe);
+        rect(g, 8, 21, 3, 2, s.shoe);
+      } else {
+        rect(g, 5, 20, 2, 2, s.shoe);
+        rect(g, 9, 20, 2, 2, s.shoe);
+      }
+    }
+
+    function sheet(kind, frame, dir) {
+      const key = kind + frame + dir;
+      if (sheetCache[key]) return sheetCache[key];
+      const c = document.createElement("canvas");
+      c.width = 20;
+      c.height = 28;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      const tmp = document.createElement("canvas");
+      tmp.width = 16;
+      tmp.height = 24;
+      const tg = tmp.getContext("2d");
+      const spec = LOOK[kind];
+      if (dir === "up") paintBack(tg, spec, frame);
+      else if (dir === "left" || dir === "right") paintSide(tg, spec, frame);
+      else paintFront(tg, spec, frame);
+      g.imageSmoothingEnabled = false;
+      if (dir === "left") {
+        g.save();
+        g.translate(18, 2);
+        g.scale(-1, 1);
+        g.drawImage(tmp, 0, 0);
+        g.restore();
+      } else {
+        g.drawImage(tmp, 2, 2);
+      }
+      outline(g, 20, 28);
+      sheetCache[key] = c;
+      return c;
+    }
+
+    function paintFace(g, kind, emotion) {
+      const beard = kind === "rowan";
+      const eye = "#24180f";
+      const white = "#f7f1e4";
+      const mouth = "#a85a58";
+      const brow = beard ? LOOK.rowan.hair2 : "#2a1c14";
+      const skin = LOOK[kind].skin;
+      if (emotion === "happy" || emotion === "grateful") {
+        rect(g, 10, 14, 4, 1, eye);
+        rect(g, 18, 14, 4, 1, eye);
+        px(g, 10, 13, eye);
+        px(g, 21, 13, eye);
+        smile();
+        if (emotion === "grateful") blush();
+      } else if (emotion === "warm") {
+        openEyes(0);
+        smile();
+        blush();
+      } else if (emotion === "annoyed") {
+        rect(g, 9, 11, 5, 1, brow);
+        rect(g, 10, 12, 3, 1, brow);
+        rect(g, 18, 12, 3, 1, brow);
+        rect(g, 19, 11, 5, 1, brow);
+        openEyes(0);
+        frown();
+      } else if (emotion === "suspicious") {
+        rect(g, 9, 12, 4, 1, brow);
+        rect(g, 19, 10, 4, 1, brow);
+        openEyes(1);
+        if (!beard) rect(g, 13, 21, 6, 1, mouth);
+      } else {
+        rect(g, 10, 11, 4, 1, brow);
+        rect(g, 18, 11, 4, 1, brow);
+        openEyes(0);
+        if (!beard) rect(g, 13, 21, 6, 1, mouth);
+      }
+      function openEyes(shift) {
+        rect(g, 10, 14, 4, 3, white);
+        rect(g, 18, 14, 4, 3, white);
+        rect(g, 11 + shift, 15, 2, 2, eye);
+        rect(g, 19 + shift, 15, 2, 2, eye);
+      }
+      function smile() {
+        if (beard) rect(g, 11, 17, 10, 5, skin);
+        rect(g, 12, 20, 8, 1, mouth);
+        px(g, 12, 19, mouth);
+        px(g, 19, 19, mouth);
+      }
+      function frown() {
+        if (beard) rect(g, 11, 17, 10, 5, skin);
+        rect(g, 13, 21, 6, 1, mouth);
+        px(g, 12, 22, mouth);
+        px(g, 19, 22, mouth);
+      }
+      function blush() {
+        rect(g, 8, 18, 2, 1, "#e09080");
+        rect(g, 22, 18, 2, 1, "#e09080");
+      }
+    }
+
+    function paintPortrait(g, kind, emotion) {
+      const s = LOOK[kind];
+      rect(g, 0, 0, 32, 40, "#e7d2a4");
+      if (kind === "mira") {
+        rect(g, 0, 22, 32, 18, s.hair);
+        rect(g, 4, 26, 24, 14, s.cloth);
+        rect(g, 10, 28, 12, 12, s.accent);
+      } else if (kind === "bram") {
+        rect(g, 0, 26, 32, 14, s.cloth);
+        rect(g, 8, 28, 16, 12, s.accent);
+        rect(g, 26, 14, 5, 6, "#3a3e44");
+        rect(g, 27, 20, 3, 14, "#6b4428");
+        px(g, 27, 15, "#c8cdd2");
+      } else {
+        rect(g, 1, 24, 30, 16, s.cloth);
+        rect(g, 13, 26, 6, 14, s.accent);
+      }
+      rect(g, 13, 22, 6, 6, s.skin2);
+      rect(g, 7, 6, 18, 18, s.skin);
+      rect(g, 5, 12, 2, 4, s.skin2);
+      rect(g, 25, 12, 2, 4, s.skin2);
+      if (kind === "rowan") {
+        rect(g, 6, 4, 20, 5, s.hair);
+        rect(g, 6, 8, 3, 7, s.hair);
+        rect(g, 23, 8, 3, 7, s.hair);
+        rect(g, 9, 16, 14, 8, s.hair2);
+      } else if (kind === "mira") {
+        rect(g, 6, 3, 20, 8, s.hair);
+        rect(g, 8, 3, 16, 4, s.hair2);
+        rect(g, 4, 10, 4, 16, s.hair);
+        rect(g, 24, 10, 4, 16, s.hair);
+      } else {
+        rect(g, 6, 3, 20, 8, s.hair);
+        rect(g, 8, 2, 16, 3, s.hair2);
+      }
+      if (kind !== "rowan") rect(g, 15, 16, 2, 2, s.skin2);
+      paintFace(g, kind, emotion);
+    }
+
+    function portraitSheet(kind, emotion) {
+      const key = kind + "|" + emotion;
+      if (portraitCache[key]) return portraitCache[key];
+      const c = document.createElement("canvas");
+      c.width = 36;
+      c.height = 44;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      const inner = document.createElement("canvas");
+      inner.width = 32;
+      inner.height = 40;
+      paintPortrait(inner.getContext("2d"), kind, emotion);
+      g.drawImage(inner, 2, 2);
+      outline(g, 36, 44);
+      portraitCache[key] = c;
+      return c;
+    }
+
+    function paintErrorPortrait(g) {
+      rect(g, 0, 0, 36, 44, "#e7d2a4");
+      rect(g, 16, 8, 4, 16, "#6b3030");
+      rect(g, 16, 28, 4, 4, "#6b3030");
+    }
+
+    function showPortrait(kind, emotion) {
+      const c = document.getElementById("portrait");
+      const g = c.getContext("2d");
+      g.imageSmoothingEnabled = false;
+      g.clearRect(0, 0, c.width, c.height);
+      if (!LOOK[kind]) {
+        paintErrorPortrait(g);
+        return;
+      }
+      g.drawImage(portraitSheet(kind, emotion || "neutral"), 0, 0);
+    }
+
+    function heartCount(affinity) {
+      const n = Number(affinity) || 0;
+      if (n <= 0) return 0;
+      return Math.max(0, Math.min(10, Math.round(n / 10)));
+    }
+
+    function heartCanvas(filled, onDark) {
+      const key = (filled ? "1" : "0") + (onDark ? "d" : "p");
+      if (heartCache[key]) return heartCache[key];
+      const c = document.createElement("canvas");
+      c.width = 7;
+      c.height = 6;
+      const g = c.getContext("2d");
+      const color = filled ? "#d4534a" : (onDark ? "#8a7060" : "#c4b09a");
+      const rows = ["0##0##0", "#######", "#######", "0#####0", "00###00", "000#000"];
+      rows.forEach((row, y) => {
+        for (let x = 0; x < row.length; x += 1) {
+          if (row[x] === "#") px(g, x, y, color);
+        }
       });
-      if (!items.length) {
-        const li = document.createElement("li");
-        li.textContent = "None";
-        node.appendChild(li);
+      heartCache[key] = c;
+      return c;
+    }
+
+    function copyCanvas(src) {
+      const copy = document.createElement("canvas");
+      copy.width = src.width;
+      copy.height = src.height;
+      const g = copy.getContext("2d");
+      g.imageSmoothingEnabled = false;
+      g.drawImage(src, 0, 0);
+      return copy;
+    }
+
+    function appendHearts(node, affinity, onDark) {
+      node.replaceChildren();
+      const n = heartCount(affinity);
+      for (let i = 0; i < 10; i += 1) {
+        node.appendChild(copyCanvas(heartCanvas(i < n, onDark)));
+      }
+      node.title = String(affinity);
+    }
+
+    function showHearts(affinity) {
+      appendHearts(document.getElementById("hearts"), affinity, false);
+    }
+
+    function drawIcon(g, name) {
+      g.clearRect(0, 0, 16, 16);
+      if (name === "forging hammer") {
+        rect(g, 7, 5, 2, 9, "#6b4428");
+        rect(g, 3, 2, 10, 4, "#3a3e44");
+        rect(g, 4, 3, 3, 1, "#c8cdd2");
+      } else if (name === "worn cloak") {
+        rect(g, 4, 2, 8, 3, "#5c4030");
+        rect(g, 3, 5, 10, 9, "#6b4a32");
+        rect(g, 5, 6, 6, 7, "#4a3424");
+        px(g, 8, 5, "#e0b84a");
+      } else if (name === "horseshoe") {
+        rect(g, 3, 2, 2, 10, "#8a929c");
+        rect(g, 11, 2, 2, 10, "#8a929c");
+        rect(g, 3, 10, 10, 2, "#8a929c");
+        px(g, 4, 3, "#d5d8dc");
+      } else if (name === "iron nail") {
+        rect(g, 7, 4, 2, 9, "#8a929c");
+        rect(g, 5, 2, 6, 3, "#6a7078");
+        px(g, 6, 3, "#d5d8dc");
+      } else if (name === "brown loaf") {
+        rect(g, 3, 6, 10, 6, "#6b3e28");
+        rect(g, 4, 4, 8, 3, "#8a5430");
+        rect(g, 5, 8, 6, 1, "#c4a06a");
+      } else {
+        rect(g, 4, 6, 8, 7, "#8a5a34");
+        rect(g, 6, 3, 4, 4, "#6b4428");
+        px(g, 7, 8, "#e0b84a");
+      }
+    }
+
+    function iconCanvas(name) {
+      if (iconCache[name]) return iconCache[name];
+      const c = document.createElement("canvas");
+      c.width = 16;
+      c.height = 16;
+      drawIcon(c.getContext("2d"), name);
+      iconCache[name] = c;
+      return c;
+    }
+
+    function paintInventory(items) {
+      const row = document.getElementById("slots");
+      row.replaceChildren();
+      const count = Math.max(items.length, 6);
+      for (let i = 0; i < count; i += 1) {
+        const slot = document.createElement("div");
+        slot.className = "slot";
+        if (items[i]) {
+          const icon = copyCanvas(iconCanvas(items[i]));
+          icon.title = items[i];
+          slot.title = items[i];
+          slot.appendChild(icon);
+        }
+        row.appendChild(slot);
+      }
+      document.getElementById("pack-names").textContent = items.length
+        ? items.join(", ")
+        : "Empty";
+    }
+
+    function paintQuests(quests) {
+      const box = document.getElementById("quest-body");
+      box.replaceChildren();
+      if (!quests.length) {
+        box.textContent = "None";
+        return;
+      }
+      quests.forEach((quest) => {
+        const row = document.createElement("div");
+        row.className = "quest";
+        row.dataset.status = quest.status;
+        const title = document.createElement("strong");
+        title.textContent = quest.title;
+        const status = document.createElement("span");
+        status.textContent = quest.status;
+        row.append(title, status);
+        box.appendChild(row);
+      });
+    }
+
+    function paintFriends(list) {
+      const box = document.getElementById("friends");
+      box.replaceChildren();
+      list.forEach((npc) => {
+        const row = document.createElement("div");
+        row.className = "friend";
+        const name = document.createElement("span");
+        name.className = "fname";
+        name.textContent = npc.name;
+        const hearts = document.createElement("span");
+        hearts.className = "mini-hearts";
+        appendHearts(hearts, npc.affinity, true);
+        row.append(name, hearts);
+        box.appendChild(row);
+      });
+    }
+
+    function drawWindow(g, x, y) {
+      rect(g, x, y, 10, 12, "#4a2e1c");
+      rect(g, x + 2, y + 2, 6, 8, "#f0d080");
+      rect(g, x + 4, y + 2, 1, 8, "#6b4428");
+      rect(g, x + 2, y + 5, 6, 1, "#6b4428");
+    }
+
+    function drawHouse(g, box, style) {
+      const roofH = Math.round(box.h * 0.38);
+      rect(g, box.x + 3, box.y + box.h, box.w - 4, 3, "#3a5a30");
+      rect(g, box.x + 2, box.y + roofH, box.w - 4, box.h - roofH, style.wall);
+      if (style.stone) {
+        for (let i = 0; i < 28; i += 1) {
+          const sx = box.x + 4 + (hash(i, box.x) % (box.w - 10));
+          const sy = box.y + roofH + 3 + (hash(box.y, i) % (box.h - roofH - 8));
+          rect(g, sx, sy, 2, 2, style.wallDark);
+        }
+      } else {
+        for (let yy = box.y + roofH + 4; yy < box.y + box.h - 2; yy += 5) {
+          rect(g, box.x + 2, yy, box.w - 4, 1, style.wallDark);
+        }
+      }
+      if (style.timber) {
+        rect(g, box.x + 2, box.y + roofH, 3, box.h - roofH, "#6b4428");
+        rect(g, box.x + box.w - 5, box.y + roofH, 3, box.h - roofH, "#6b4428");
+        rect(g, box.x + 2, box.y + box.h - 4, box.w - 4, 4, "#6b4428");
+      }
+      rect(g, box.x, box.y + 3, box.w, roofH - 1, style.roof);
+      rect(g, box.x, box.y, box.w, 3, style.roofLight);
+      rect(g, box.x, box.y + roofH - 2, box.w, 3, style.roofDark);
+      for (let yy = box.y + 7; yy < box.y + roofH - 2; yy += 4) {
+        rect(g, box.x, yy, box.w, 1, style.roofDark);
+      }
+      const dw = 14;
+      const dh = 18;
+      const dx = box.x + Math.floor(box.w / 2) - 7;
+      const dy = box.y + box.h - dh;
+      rect(g, dx, dy, dw, dh, "#3a2416");
+      rect(g, dx + 2, dy + 2, dw - 4, dh - 4, "#6b4428");
+      px(g, dx + dw - 5, dy + 9, "#e0c080");
+      style.windows.forEach((spot) => drawWindow(g, box.x + spot[0], box.y + spot[1]));
+    }
+
+    function drawTree(g, x, y) {
+      rect(g, x + 7, y + 16, 4, 12, "#5a3820");
+      rect(g, x + 8, y + 16, 2, 12, "#6b4428");
+      rect(g, x + 1, y + 8, 16, 10, "#2f5e30");
+      rect(g, x + 3, y + 3, 12, 8, "#3e7a38");
+      rect(g, x, y + 10, 18, 6, "#2a552c");
+      rect(g, x + 5, y + 5, 4, 3, "#6aaa4e");
+    }
+
+    function drawFence(g, x, y, posts) {
+      rect(g, x, y + 4, posts * 8, 2, "#6b4428");
+      rect(g, x, y + 8, posts * 8, 2, "#8a5a34");
+      for (let i = 0; i <= posts; i += 1) {
+        rect(g, x + i * 8, y, 2, 12, "#4a2e1c");
+      }
+    }
+
+    function drawFlower(g, x, y, color) {
+      rect(g, x + 2, y + 3, 1, 3, "#2f6a28");
+      rect(g, x + 1, y, 3, 3, color);
+      px(g, x + 2, y + 1, "#fff4c8");
+    }
+
+    function buildBackground() {
+      const c = document.createElement("canvas");
+      c.width = WORLD_W;
+      c.height = WORLD_H;
+      const g = c.getContext("2d");
+      const img = g.createImageData(WORLD_W, WORLD_H);
+      const data = img.data;
+      const grass = [
+        [79, 138, 60], [92, 154, 70], [63, 118, 48], [106, 170, 80], [69, 126, 52],
+      ];
+      const dirt = [
+        [196, 165, 116], [176, 140, 88], [212, 184, 138], [164, 122, 74],
+      ];
+      const water = [[61, 110, 140], [78, 134, 164], [46, 88, 112]];
+      for (let y = 0; y < WORLD_H; y += 1) {
+        for (let x = 0; x < WORLD_W; x += 1) {
+          const i = (y * WORLD_W + x) * 4;
+          const n = hash(x, y);
+          let col;
+          if (isPond(x, y)) col = water[n % water.length];
+          else if (isPath(x, y)) {
+            const edge = !isPath(x - 1, y) || !isPath(x + 1, y) || !isPath(x, y - 1) || !isPath(x, y + 1);
+            col = edge ? [140, 104, 64] : dirt[n % dirt.length];
+          } else col = grass[n % grass.length];
+          data[i] = col[0];
+          data[i + 1] = col[1];
+          data[i + 2] = col[2];
+          data[i + 3] = 255;
+        }
+      }
+      g.putImageData(img, 0, 0);
+      drawHouse(g, FORGE, {
+        wall: "#8a8478", wallDark: "#6e685e", stone: true,
+        roof: "#6b3a2a", roofLight: "#8a4a36", roofDark: "#4a2418",
+        windows: [[70, 46]],
+      });
+      rect(g, FORGE.x + 12, FORGE.y - 12, 10, 16, "#6e685e");
+      rect(g, FORGE.x + 10, FORGE.y - 14, 14, 3, "#4a4540");
+      drawHouse(g, ELDER, {
+        wall: "#e4d2b0", wallDark: "#c4b496", timber: true,
+        roof: "#4e6a48", roofLight: "#6a8660", roofDark: "#314832",
+        windows: [[18, 46], [62, 46]],
+      });
+      drawHouse(g, INN, {
+        wall: "#f0ddb8", wallDark: "#d4c4a0", timber: true,
+        roof: "#8d3b3b", roofLight: "#a85048", roofDark: "#5e2424",
+        windows: [[16, 44], [78, 44]],
+      });
+      rect(g, INN.x + 28, INN.y + 28, 2, 22, "#4a2e1c");
+      rect(g, INN.x + 24, INN.y + 22, 10, 8, "#6b4428");
+      rect(g, INN.x + 26, INN.y + 24, 6, 4, "#2f6b3a");
+      rect(g, LAMP.x, LAMP.y + 6, 2, 18, "#4a2e1c");
+      rect(g, LAMP.x - 2, LAMP.y, 6, 7, "#c4a05a");
+      rect(g, 20, 116, 16, 4, "#6b4428");
+      rect(g, 22, 113, 14, 4, "#8a5a34");
+      rect(g, 21, 110, 14, 4, "#6b4428");
+      rect(g, ANVIL.x + 1, ANVIL.y + 10, 14, 3, "#5a3820");
+      rect(g, ANVIL.x + 2, ANVIL.y, 12, 4, "#2e3238");
+      rect(g, ANVIL.x + 4, ANVIL.y + 4, 8, 3, "#2e3238");
+      rect(g, ANVIL.x + 3, ANVIL.y + 7, 10, 3, "#3a3e44");
+      rect(g, ANVIL.x + 3, ANVIL.y + 1, 4, 1, "#c8cdd2");
+      rect(g, BOARD.x + 3, BOARD.y + 18, 3, 12, "#4a2e1c");
+      rect(g, BOARD.x + 16, BOARD.y + 18, 3, 12, "#4a2e1c");
+      rect(g, BOARD.x, BOARD.y, 22, 18, "#6b4428");
+      rect(g, BOARD.x + 3, BOARD.y + 3, 16, 12, "#f3e6c8");
+      rect(g, BOARD.x + 5, BOARD.y + 5, 12, 1, "#8a7050");
+      rect(g, BOARD.x + 5, BOARD.y + 8, 10, 1, "#8a7050");
+      rect(g, BOARD.x + 5, BOARD.y + 11, 8, 1, "#8a7050");
+      rect(g, BOARD.x + 10, BOARD.y + 2, 2, 2, "#a33b32");
+      rect(g, WELL.x, WELL.y + 8, 22, 10, "#6e685e");
+      rect(g, WELL.x + 3, WELL.y + 10, 16, 5, "#3d6e8c");
+      rect(g, WELL.x + 1, WELL.y + 8, 20, 2, "#8a8478");
+      rect(g, WELL.x + 2, WELL.y, 2, 10, "#6b4428");
+      rect(g, WELL.x + 18, WELL.y, 2, 10, "#6b4428");
+      rect(g, WELL.x, WELL.y, 22, 3, "#8d3b3b");
+      rect(g, BED.x, BED.y, BED.w, BED.h, "#6b4428");
+      rect(g, BED.x + 2, BED.y + 2, 14, 5, "#f4efe6");
+      rect(g, BED.x + 2, BED.y + 7, 14, 5, "#8d3a4a");
+      drawFence(g, 8, 242, 44);
+      drawFence(g, 8, 6, 16);
+      drawFence(g, 250, 6, 14);
+      const trees = [
+        [8, 158], [70, 168], [104, 214], [214, 170], [250, 206],
+        [292, 168], [348, 196], [146, 214],
+      ];
+      trees.forEach((spot) => drawTree(g, spot[0], spot[1]));
+      const colors = ["#d4534a", "#e0b84a", "#f4efe4", "#d47ab0"];
+      for (let i = 0; i < 48; i += 1) {
+        const x = 6 + (hash(i, 4) % 370);
+        const y = 8 + (hash(i, 8) % 236);
+        if (y > 96 && y < 164) continue;
+        if (isPath(x, y) || isPond(x, y)) continue;
+        if (inBox(x, y, FORGE) || inBox(x, y, ELDER) || inBox(x, y, INN)) continue;
+        drawFlower(g, x, y, colors[hash(i, 2) % colors.length]);
+      }
+      solids = [
+        { x: FORGE.x, y: FORGE.y, w: FORGE.w, h: FORGE.h },
+        { x: ELDER.x, y: ELDER.y, w: ELDER.w, h: ELDER.h },
+        { x: INN.x, y: INN.y, w: INN.w, h: INN.h },
+        { x: ANVIL.x, y: ANVIL.y, w: ANVIL.w, h: ANVIL.h },
+        { x: BOARD.x, y: BOARD.y, w: BOARD.w, h: BOARD.h - 6 },
+        { x: WELL.x, y: WELL.y, w: WELL.w, h: WELL.h },
+        { x: 20, y: 192, w: 56, h: 28 },
+      ];
+      trees.forEach((spot) => {
+        solids.push({ x: spot[0] + 6, y: spot[1] + 16, w: 6, h: 12 });
+      });
+      return c;
+    }
+
+    function blocked(x, y) {
+      if (x < 10 || y < 14 || x > WORLD_W - 10 || y > WORLD_H - 8) return true;
+      const left = x - 6;
+      const top = y - 3;
+      const right = x + 6;
+      const bottom = y + 2;
+      for (let i = 0; i < solids.length; i += 1) {
+        const s = solids[i];
+        if (left < s.x + s.w && right > s.x && top < s.y + s.h && bottom > s.y) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function tryMove(dx, dy) {
+      if (!blocked(player.x + dx, player.y)) player.x += dx;
+      if (!blocked(player.x, player.y + dy)) player.y += dy;
+    }
+
+    function distTo(x, y) {
+      return Math.hypot(player.x - x, player.y - y);
+    }
+
+    function frozen() {
+      return dialogueOpen || paperOpen || loading;
+    }
+
+    function faceOf(npc) {
+      const dx = player.x - npc.x;
+      const dy = player.y - npc.y;
+      if (Math.hypot(dx, dy) > 72) return "down";
+      if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
+      return dy < 0 ? "up" : "down";
+    }
+
+    function nearest() {
+      let best = null;
+      let bestD = TALK_RANGE;
+      homes.forEach((npc) => {
+        const d = distTo(npc.x, npc.y);
+        if (d <= bestD) {
+          bestD = d;
+          best = { kind: "npc", id: npc.id, x: npc.x, y: npc.y, d: d };
+        }
+      });
+      const bedD = distTo(BED.x + 9, BED.y + 8);
+      if (bedD <= bestD) {
+        best = { kind: "bed", x: BED.x + 9, y: BED.y + 4, d: bedD };
+      }
+      return best;
+    }
+
+    function hitNpc(x, y) {
+      for (let i = 0; i < homes.length; i += 1) {
+        const npc = homes[i];
+        if (Math.abs(x - npc.x) <= 14 && y <= npc.y + 4 && y >= npc.y - 28) return npc;
+      }
+      return null;
+    }
+
+    function hitBed(x, y) {
+      return x >= BED.x - 6 && x <= BED.x + BED.w + 6 && y >= BED.y - 8 && y <= BED.y + BED.h + 10;
+    }
+
+    function formatClock(mins) {
+      const total = Math.floor(mins) % (24 * 60);
+      const h24 = Math.floor(total / 60);
+      const minute = total % 60;
+      let h = h24 % 12;
+      if (h === 0) h = 12;
+      const mm = minute < 10 ? "0" + minute : String(minute);
+      return h + ":" + mm + (h24 < 12 ? " AM" : " PM");
+    }
+
+    function paintClock() {
+      document.getElementById("clock-day").textContent = "Day " + day;
+      document.getElementById("clock-time").textContent = formatClock(clockMin);
+    }
+
+    function drawSmoke(g) {
+      for (let i = 0; i < 4; i += 1) {
+        const age = (time * 0.28 + i * 0.25) % 1;
+        const y = Math.round(SMOKE.y - age * 20);
+        if (y < 2) continue;
+        const x = Math.round(SMOKE.x + Math.sin(i + time) * 2);
+        const size = 2 + Math.floor(age * 3);
+        g.fillStyle = age < 0.34 ? "#e4e0da" : age < 0.67 ? "#c8c2ba" : "#a8a29a";
+        g.fillRect(x, y, size, size);
+      }
+    }
+
+    function drawEmoteIcon(g, x, y, kind) {
+      if (kind === "heart") {
+        g.fillStyle = "#d4534a";
+        g.fillRect(x, y + 1, 2, 2);
+        g.fillRect(x + 4, y + 1, 2, 2);
+        g.fillRect(x, y + 3, 6, 2);
+        g.fillRect(x + 1, y + 5, 4, 1);
+        g.fillRect(x + 2, y + 6, 2, 1);
+      } else if (kind === "anger") {
+        g.fillStyle = "#d4534a";
+        g.fillRect(x, y, 2, 2);
+        g.fillRect(x + 5, y, 2, 2);
+        g.fillRect(x + 2, y + 2, 3, 2);
+        g.fillRect(x, y + 4, 2, 2);
+        g.fillRect(x + 5, y + 4, 2, 2);
+      } else if (kind === "question") {
+        g.fillStyle = "#2a1c14";
+        g.fillRect(x + 1, y, 4, 1);
+        g.fillRect(x + 4, y + 1, 2, 2);
+        g.fillRect(x + 2, y + 3, 2, 1);
+        g.fillRect(x + 2, y + 5, 2, 1);
+      } else if (kind === "sweat") {
+        g.fillStyle = "#4e86c4";
+        g.fillRect(x + 3, y, 2, 1);
+        g.fillRect(x + 2, y + 1, 4, 2);
+        g.fillRect(x + 3, y + 3, 2, 2);
+      } else if (kind === "music") {
+        g.fillStyle = "#2a1c14";
+        g.fillRect(x + 4, y, 2, 4);
+        g.fillRect(x + 2, y + 4, 4, 2);
+        g.fillRect(x + 6, y + 1, 2, 1);
+      } else if (kind === "dots") {
+        const n = 1 + (Math.floor(time * 3) % 3);
+        g.fillStyle = "#2a1c14";
+        for (let i = 0; i < n; i += 1) g.fillRect(x + i * 3, y + 3, 2, 2);
+      }
+    }
+
+    function drawBubble(g, x, y, kind) {
+      const bob = Math.floor(time * 2) % 2 === 0 ? 0 : -1;
+      const left = Math.round(x - 8);
+      const top = Math.round(y + bob);
+      rect(g, left, top, 16, 14, "#2a1c14");
+      rect(g, left + 1, top + 1, 14, 10, "#f7f1e4");
+      rect(g, left + 6, top + 11, 4, 3, "#2a1c14");
+      rect(g, left + 7, top + 11, 2, 2, "#f7f1e4");
+      drawEmoteIcon(g, left + 4, top + 3, kind);
+    }
+
+    function drawActor(g, kind, x, y, frame, dir) {
+      const img = sheet(kind, frame, dir);
+      rect(g, Math.round(x) - 6, Math.round(y) - 1, 12, 3, "#2e2418");
+      g.drawImage(img, Math.round(x) - 10, Math.round(y) - 26);
+    }
+
+    function draw() {
+      if (!background) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(background, 0, 0);
+      drawSmoke(ctx);
+      const flame = Math.floor(time * 5) % 2 === 0 ? "#ffe0a0" : "#f0d080";
+      rect(ctx, LAMP.x - 1, LAMP.y + 2, 4, 3, flame);
+      const idle = Math.floor(time / 0.45) % 2;
+      const walk = Math.floor(time / 0.16) % 2;
+      const actors = homes.map((npc) => ({
+        kind: npc.id,
+        x: npc.x,
+        y: npc.y,
+        frame: idle,
+        dir: faceOf(npc),
+      }));
+      actors.push({
+        kind: "kestrel",
+        x: player.x,
+        y: player.y,
+        frame: player.moving ? walk : idle,
+        dir: player.dir,
+      });
+      actors.sort((a, b) => a.y - b.y);
+      actors.forEach((actor) => {
+        drawActor(ctx, actor.kind, actor.x, actor.y, actor.frame, actor.dir);
+      });
+      homes.forEach((npc) => {
+        const bubbleY = npc.y - 42;
+        if (loading && npc.id === busyId) {
+          drawBubble(ctx, npc.x, bubbleY, "dots");
+          return;
+        }
+        const person = residentById[npc.id];
+        const kind = person ? EMOTE_FOR[person.emotion] : null;
+        if (kind) drawBubble(ctx, npc.x, bubbleY, kind);
+        else if (person && person.emotion && !EMOTE_FOR[person.emotion] && person.emotion !== "neutral") {
+          drawBubble(ctx, npc.x, bubbleY, "sweat");
+        }
+      });
+      placeHint();
+      paintClock();
+    }
+
+    function placeHint() {
+      const hint = document.getElementById("hint");
+      const near = !frozen() ? nearest() : null;
+      if (!near) {
+        hint.hidden = true;
+        return;
+      }
+      hint.hidden = false;
+      const person = near.kind === "npc" ? residentById[near.id] : null;
+      document.getElementById("hint-name").textContent = person ? person.name : "Bed";
+      document.getElementById("hint-text").textContent = near.kind === "bed"
+        ? "Press E / click to sleep"
+        : "Press E / click to talk";
+      const rect = canvas.getBoundingClientRect();
+      const sx = rect.left + (near.x / WORLD_W) * rect.width;
+      const sy = rect.top + ((near.y - 48) / WORLD_H) * rect.height;
+      hint.style.left = Math.round(sx) + "px";
+      hint.style.top = Math.round(sy) + "px";
+    }
+
+    function updateTypewriter(dt) {
+      const node = document.getElementById("reply");
+      if (loading) {
+        const n = 1 + (Math.floor(time * 3) % 3);
+        node.textContent = ".".repeat(n);
+        return;
+      }
+      if (replyShown >= replyFull.length) return;
+      replyTimer += dt;
+      while (replyTimer > 0.028 && replyShown < replyFull.length) {
+        replyTimer -= 0.028;
+        replyShown += 1;
+      }
+      node.textContent = replyFull.slice(0, replyShown);
+    }
+
+    function setReply(text) {
+      replyFull = text || "";
+      replyShown = 0;
+      replyTimer = 0;
+      document.getElementById("reply").textContent = "";
+    }
+
+    function skipTypewriter() {
+      if (loading) return;
+      replyShown = replyFull.length;
+      document.getElementById("reply").textContent = replyFull;
+    }
+
+    function update(dt) {
+      player.moving = false;
+      if (!frozen()) {
+        clockMin += dt * 4;
+        const mv = movementVector();
+        if (mv.x || mv.y) {
+          goal = null;
+          tryMove(mv.x * SPEED * dt, mv.y * SPEED * dt);
+          player.moving = true;
+          if (Math.abs(mv.x) > Math.abs(mv.y)) player.dir = mv.x < 0 ? "left" : "right";
+          else player.dir = mv.y < 0 ? "up" : "down";
+        } else if (goal) {
+          const dx = goal.x - player.x;
+          const dy = goal.y - player.y;
+          const d = Math.hypot(dx, dy);
+          const arrived = d < 4 || (goal.then && d <= TALK_RANGE);
+          if (arrived) {
+            const then = goal.then;
+            const id = goal.id;
+            goal = null;
+            stuck = 0;
+            if (then === "talk") openTalk(id);
+            else if (then === "sleep") doSleep();
+          } else {
+            const step = Math.min(SPEED * dt, d);
+            const prevX = player.x;
+            const prevY = player.y;
+            tryMove((dx / d) * step, (dy / d) * step);
+            player.moving = true;
+            if (Math.abs(dx) > Math.abs(dy)) player.dir = dx < 0 ? "left" : "right";
+            else player.dir = dy < 0 ? "up" : "down";
+            if (Math.abs(player.x - prevX) < 0.15 && Math.abs(player.y - prevY) < 0.15) {
+              stuck += dt;
+              if (stuck > 0.5) {
+                goal = null;
+                stuck = 0;
+              }
+            } else stuck = 0;
+          }
+        }
+      }
+      updateTypewriter(dt);
+      if (toastTimer > 0) {
+        toastTimer -= dt;
+        if (toastTimer <= 0) document.getElementById("toast").hidden = true;
+      }
+    }
+
+    function movementVector() {
+      let x = 0;
+      let y = 0;
+      if (held.left) x -= 1;
+      if (held.right) x += 1;
+      if (held.up) y -= 1;
+      if (held.down) y += 1;
+      if (x && y) {
+        const inv = 1 / Math.sqrt(2);
+        x *= inv;
+        y *= inv;
+      }
+      return { x: x, y: y };
+    }
+
+    function frame(now) {
+      if (!lastTick) lastTick = now;
+      const dt = Math.min(0.05, (now - lastTick) / 1000);
+      lastTick = now;
+      time += dt;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    function layout() {
+      const stage = document.getElementById("stage");
+      const rect = stage.getBoundingClientRect();
+      const scale = Math.max(1, Math.min(
+        Math.floor(rect.width / WORLD_W),
+        Math.floor(rect.height / WORLD_H),
+      ));
+      canvas.style.width = (WORLD_W * scale) + "px";
+      canvas.style.height = (WORLD_H * scale) + "px";
+      const portrait = document.getElementById("portrait");
+      const pScale = window.innerWidth < 1000 ? 2 : 3;
+      portrait.style.width = (portrait.width * pScale) + "px";
+      portrait.style.height = (portrait.height * pScale) + "px";
+    }
+
+    function isTyping() {
+      const el = document.activeElement;
+      if (!el) return false;
+      return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+    }
+
+    function showToast(message) {
+      const node = document.getElementById("toast");
+      node.hidden = false;
+      node.textContent = message;
+      toastTimer = 5;
+    }
+
+    function worldFromEvent(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((event.clientX - rect.left) / rect.width) * WORLD_W,
+        y: ((event.clientY - rect.top) / rect.height) * WORLD_H,
+      };
+    }
+
+    function onWorldClick(p) {
+      if (loading || paperOpen) return;
+      if (dialogueOpen) closeDialogue();
+      const npc = hitNpc(p.x, p.y);
+      if (npc) {
+        if (distTo(npc.x, npc.y) <= TALK_RANGE) openTalk(npc.id);
+        else goal = { x: npc.x, y: npc.y + 8, then: "talk", id: npc.id };
+        return;
+      }
+      if (hitBed(p.x, p.y)) {
+        if (distTo(BED.x + 9, BED.y + 8) <= TALK_RANGE) doSleep();
+        else goal = { x: BED.x + 9, y: BED.y + 20, then: "sleep" };
+        return;
+      }
+      goal = {
+        x: Math.max(12, Math.min(WORLD_W - 12, p.x)),
+        y: Math.max(16, Math.min(WORLD_H - 10, p.y)),
+        then: null,
+      };
+    }
+
+    function openTalk(id) {
+      if (loading || paperOpen) return;
+      picked = true;
+      current = id;
+      dialogueOpen = true;
+      goal = null;
+      document.getElementById("dialogue").hidden = false;
+      const npc = residentById[id];
+      document.getElementById("nameplate").textContent = npc ? npc.name : id;
+      document.getElementById("roleplate").textContent = npc ? npc.role : "";
+      showPortrait(id, npc ? npc.emotion : "neutral");
+      showHearts(npc ? npc.affinity : 0);
+      if (!replyFull) document.getElementById("reply").textContent = "";
+      if (gameState) render(gameState);
+      document.getElementById("line").focus();
+    }
+
+    function closeDialogue() {
+      dialogueOpen = false;
+      document.getElementById("dialogue").hidden = true;
+      const line = document.getElementById("line");
+      if (document.activeElement === line) line.blur();
+    }
+
+    function closePaper() {
+      paperOpen = false;
+      document.getElementById("paper").hidden = true;
+    }
+
+    async function readJson(response) {
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (err) {
+        data = { error: "The town could not answer." };
+      }
+      if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+      return data;
+    }
+
+    async function sendLine(text) {
+      loading = true;
+      busyId = current;
+      document.getElementById("say").disabled = true;
+      try {
+        const response = await fetch("/api/talk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ npc_id: current, text: text }),
+        });
+        const data = await readJson(response);
+        render(data.state);
+        if (data.turn) {
+          document.getElementById("nameplate").textContent = data.turn.npc_name;
+          const npc = residentById[current];
+          document.getElementById("roleplate").textContent = npc ? npc.role : "";
+          showPortrait(current, data.turn.emotion);
+          showHearts(data.turn.affinity);
+          loading = false;
+          setReply(data.turn.reply);
+        } else {
+          loading = false;
+        }
+      } catch (err) {
+        loading = false;
+        showPortrait("error", "neutral");
+        setReply(err.message || "The town could not answer.");
+        showToast(err.message || "The town could not answer.");
+        document.getElementById("line").value = text;
+      } finally {
+        busyId = null;
+        document.getElementById("say").disabled = false;
+      }
+    }
+
+    async function doSleep() {
+      if (loading || paperOpen) return;
+      loading = true;
+      closeDialogue();
+      try {
+        const response = await fetch("/api/wait", { method: "POST" });
+        const data = await readJson(response);
+        day += 1;
+        clockMin = 6 * 60;
+        player.x = BED.x + 9;
+        player.y = BED.y + 22;
+        player.dir = "down";
+        document.getElementById("paper-day").textContent = "Day " + day + " · Morning";
+        document.getElementById("paper-body").textContent = data.text;
+        document.getElementById("paper").hidden = false;
+        paperOpen = true;
+        render(data.state);
+      } catch (err) {
+        showToast(err.message || "The night would not pass.");
+      } finally {
+        loading = false;
+      }
+    }
+
+    function talkNearest() {
+      const near = nearest();
+      if (!near) return;
+      if (near.kind === "bed") doSleep();
+      else openTalk(near.id);
+    }
+
+    function applyState(state) {
+      gameState = state;
+      residentById = {};
+      (state.residents || []).forEach((npc) => {
+        residentById[npc.id] = npc;
+      });
+      document.getElementById("town-name").textContent = state.town || "Millhaven";
+      document.getElementById("model-name").textContent = state.model || "";
+      document.getElementById("who").textContent = state.player.name;
+      document.getElementById("gold").textContent = String(state.player.gold);
+      paintInventory(state.player.inventory || []);
+      paintQuests(state.quests || []);
+      paintFriends(state.residents || []);
+      if (dialogueOpen && residentById[current] && !loading) {
+        const npc = residentById[current];
+        document.getElementById("nameplate").textContent = npc.name;
+        document.getElementById("roleplate").textContent = npc.role;
+        showHearts(npc.affinity);
       }
     }
 
     function render(state) {
-      document.getElementById("model").textContent =
-        state.model + " · " + state.town;
-      document.getElementById("player").textContent = "Player: " + state.player.name;
-      document.getElementById("gold").textContent = "Gold: " + state.player.gold;
-      fillList("inventory", state.player.inventory);
-      fillList("quests", state.quests.map((q) => q.title + " [" + q.status + "]"));
-      fillList("affinity", state.residents.map((npc) =>
-        npc.name + " " + npc.affinity + " / " + npc.emotion));
-      fillList("gossip", state.gossip.map((entry) =>
-        "[" + entry.kind + "] " + entry.text));
-      const box = document.getElementById("npcs");
-      box.replaceChildren();
+      applyState(state);
       let selectedName = current;
-      state.residents.forEach((npc) => {
+      (state.residents || []).forEach((npc) => {
         if (npc.id === current) selectedName = npc.name;
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "npc" + (npc.id === current ? " active" : "");
-        button.innerHTML = "<strong></strong><small></small>";
-        button.querySelector("strong").textContent = npc.name;
-        button.querySelector("small").textContent = npc.role;
-        button.addEventListener("click", () => {
-          current = npc.id;
-          render(state);
-        });
-        box.appendChild(button);
       });
       document.getElementById("line").placeholder =
         "Say something to " + selectedName + "…";
@@ -211,40 +1571,104 @@
     async function refresh() {
       const response = await fetch("/api/state");
       const state = await response.json();
-      current = state.npc_id;
+      if (!picked) current = state.npc_id;
       render(state);
     }
 
-    document.getElementById("talk").addEventListener("submit", async (event) => {
+    document.getElementById("line").addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
+      if (event.code === "Space" && !event.target.value && replyShown < replyFull.length && !loading) {
+        event.preventDefault();
+        skipTypewriter();
+      }
+    });
+    document.getElementById("talk-form").addEventListener("submit", (event) => {
       event.preventDefault();
+      if (loading) return;
       const input = document.getElementById("line");
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
-      addBubble("you", "You", text);
-      const response = await fetch("/api/talk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ npc_id: current, text }),
-      });
-      const data = await response.json();
-      const turn = data.turn;
-      addBubble(
-        "npc",
-        turn.npc_name + " · " + turn.emotion + " · " + turn.affinity + " (" + turn.affinity_delta + ")",
-        turn.reply,
-      );
-      render(data.state);
+      sendLine(text);
     });
-
-    document.getElementById("wait").addEventListener("click", async () => {
-      const response = await fetch("/api/wait", { method: "POST" });
-      const data = await response.json();
-      addBubble("npc", "The square", data.text);
-      render(data.state);
+    document.getElementById("close-talk").addEventListener("click", closeDialogue);
+    document.getElementById("sleep").addEventListener("click", () => {
+      document.getElementById("sleep").blur();
+      doSleep();
     });
+    document.getElementById("paper-close").addEventListener("click", closePaper);
+    document.getElementById("paper").addEventListener("pointerdown", (event) => {
+      if (event.target.id === "paper") closePaper();
+    });
+    document.getElementById("dialogue").addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button") || event.target.id === "line") return;
+      skipTypewriter();
+    });
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (isTyping()) document.getElementById("line").blur();
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      if (event.button !== 0) return;
+      onWorldClick(worldFromEvent(event));
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      const p = worldFromEvent(event);
+      canvas.style.cursor = hitNpc(p.x, p.y) || hitBed(p.x, p.y) ? "pointer" : "default";
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
+      if (isTyping()) return;
+      const dir = DIR_FROM_CODE[event.code];
+      if (dir) {
+        held[dir] = true;
+        event.preventDefault();
+        return;
+      }
+      if (event.repeat) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (dialogueOpen) skipTypewriter();
+        return;
+      }
+      if (event.code === "Escape") {
+        if (paperOpen) closePaper();
+        else if (dialogueOpen && !loading) closeDialogue();
+        return;
+      }
+      if (event.code === "KeyE" && !frozen()) {
+        event.preventDefault();
+        talkNearest();
+      }
+    });
+    window.addEventListener("keyup", (event) => {
+      const dir = DIR_FROM_CODE[event.code];
+      if (dir) held[dir] = false;
+    });
+    window.addEventListener("blur", () => {
+      held.left = false;
+      held.right = false;
+      held.up = false;
+      held.down = false;
+    });
+    window.addEventListener("resize", layout);
 
-    refresh();
+    function boot() {
+      const coin = document.getElementById("coin").getContext("2d");
+      rect(coin, 4, 1, 8, 2, "#a07830");
+      rect(coin, 2, 3, 12, 2, "#e0b84a");
+      rect(coin, 1, 5, 14, 6, "#e0b84a");
+      rect(coin, 2, 11, 12, 2, "#e0b84a");
+      rect(coin, 4, 13, 8, 2, "#a07830");
+      rect(coin, 4, 4, 3, 2, "#fff1c4");
+      px(coin, 7, 7, "#a07830");
+      px(coin, 8, 8, "#a07830");
+      background = buildBackground();
+      layout();
+      refresh().catch((err) => showToast(err.message || "The town ledger did not load."));
+      requestAnimationFrame(frame);
+    }
+    boot();
   </script>
 </body>
 </html>
