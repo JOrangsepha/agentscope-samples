@@ -1,0 +1,263 @@
+# -*- coding: utf-8 -*-
+"""Public rumors spread. Private facts stay in one NPC's memory."""
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+from gossip import (  # pylint: disable=protected-access
+    _wait_reply,
+    asks_for_news,
+    asks_if_others_complained,
+    reply_voices_insult,
+)
+from mock_model import ScriptedNpcModel
+from npc_config import load_town_config
+from session import TownSession
+
+
+def _assert_news_addresses_you(system: str) -> None:
+    """The news injection quotes the insult and addresses the player as you."""
+    assert "Bram heard you say" in system
+    assert "asked for news" in system
+    assert "rude remark" in system
+    assert "Do not change its meaning" in system
+    assert 'This is an insult, a rude remark: "You are a stupid thief."' in (
+        system
+    )
+    news_part = system.split("You asked for news", 1)[-1].split(
+        "Speak in one",
+        1,
+    )[0]
+    assert "the player" not in news_part
+    assert "玩家" not in news_part
+
+
+def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
+    """Bram's grudge is town talk. The player's trade is not."""
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    gossip = (tmp_path / "gossip.json").read_text(encoding="utf-8")
+    stored = json.loads(gossip)["entries"][0]["text"]
+    assert stored == 'Bram heard the player say: "You are a stupid thief."'
+    assert "Heard by" not in gossip
+    assert "'.'." not in gossip
+    assert "finds the player rude" not in gossip
+    assert "traveling" not in gossip
+
+    other = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    news = asyncio.run(
+        other.talk("mira", "What news have you heard about me?"),
+    )
+    assert "Bram heard the player say" in news.reply
+    assert "stupid thief" in news.reply
+    speak = [call for call in other.model.calls if call["phase"] == "speak"]
+    system = speak[-1]["system"]
+    assert "Bram heard the player say" in system
+    _assert_news_addresses_you(system)
+    assert "You insulted Bram" in system
+    assert "You are Mira" in system
+    assert "You were not insulted" in system
+    assert asks_for_news("What news have you heard about me?")
+    assert asks_for_news("镇上最近有什么新鲜事？")
+    assert asks_for_news("What's new around here?")
+    assert asks_for_news("Have you heard anything?")
+    assert asks_for_news("Are there any rumors?")
+    assert asks_for_news("镇上有什么新闻吗？")
+    assert asks_for_news("镇上有什么事？")
+    assert asks_for_news("最近有什么事？")
+    assert asks_for_news("有什么新鲜事？")
+    assert asks_for_news("Has anyone complained about me?")
+    assert asks_for_news("有人投诉我吗？")
+    assert asks_for_news("有人抱怨我吗？")
+    assert asks_for_news("有人说我什么了？")
+    assert not asks_for_news(
+        "Good news, I already found the forging hammer.",
+    )
+    private = (session.memory_dir("bram") / "MEMORY.md").read_text(
+        encoding="utf-8",
+    )
+    assert "stupid thief" in private
+
+    exchange = other.wait_in_town()
+    assert "Mira tells" in exchange
+    assert "Then the town should know" not in exchange
+    assert "Heard by" not in exchange
+    assert 'Bram heard you say: "You are a stupid thief."' in exchange
+    assert "heard the player" not in exchange
+    assert exchange.strip().endswith("I'll remember that.")
+    about_bram = 'Bram heard the player say: "fool."'
+    assert _wait_reply("Bram", about_bram) == "Bram: I was there."
+    again = (tmp_path / "gossip.json").read_text(encoding="utf-8")
+    assert "exchange" in again
+
+
+def test_the_hearer_says_i_heard(tmp_path: Path) -> None:
+    """Rowan does not retell his own rumor in the third person."""
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(session.talk("rowan", "What's new around here?"))
+    speak = [call for call in session.model.calls if call["phase"] == "speak"]
+    note = speak[-1]["system"]
+    assert "I heard you accepted The Lost Hammer" in note
+    assert "Do not change its meaning" in note
+    assert "rude remark" not in note
+    assert "Rowan heard the player accepted" in note
+    assert "repeat private memory" not in note
+
+
+def test_an_offer_of_help_is_not_a_news_question() -> None:
+    """Asking to help is not a request for town gossip."""
+    assert not asks_for_news("米拉，我有什么事可以帮你吗？")
+    assert not asks_for_news("有什么事可以帮你")
+    assert not asks_for_news("有什么我能做的")
+    assert asks_for_news("镇上有什么事？")
+    assert asks_for_news("最近有什么事？")
+    assert asks_for_news("有什么新鲜事？")
+
+
+def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
+    """Rowan is not the target of an insult Bram heard."""
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    rowan = asyncio.run(
+        session.talk("rowan", "Elder Rowan, has anyone complained about me?"),
+    )
+    assert rowan.affinity_delta == 0
+    rowan_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    note = rowan_speak[-1]["system"]
+    assert "You insulted Bram" in note
+    assert "You are Rowan" in note
+    assert "You were not insulted" in note
+    assert "Do not say the insult was about you" in note
+    assert "stupid thief" in note
+
+    bram = asyncio.run(
+        session.talk("bram", "Has anyone complained about me?"),
+    )
+    assert bram.affinity_delta == 0
+    bram_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    heard = bram_speak[-1]["system"]
+    assert "You insulted me" in heard
+    assert "I heard it" in heard
+    assert "You were not insulted" not in heard
+
+    fresh = TownSession(
+        load_town_config(),
+        tmp_path / "quest-only",
+        ScriptedNpcModel(),
+    )
+    asyncio.run(fresh.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(fresh.talk("mira", "What's new around here?"))
+    mira_speak = [
+        call for call in fresh.model.calls if call["phase"] == "speak"
+    ]
+    quest_note = mira_speak[-1]["system"]
+    assert "asked for news" in quest_note
+    assert "accepted The Lost Hammer" in quest_note
+    assert "insulted" not in quest_note
+
+    asyncio.run(session.talk("rowan", "有人抱怨我吗？"))
+    zh_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    zh_note = zh_speak[-1]["system"]
+    assert "你侮辱的是Bram" in zh_note
+    assert "你是Rowan，不是被骂的人" in zh_note
+    assert "不要说这句是在骂你" in zh_note
+    assert "这是一句辱骂、粗鲁的话" in zh_note
+    assert "不要改成夸奖" in zh_note
+
+
+def test_quest_news_is_public_and_wait_is_quiet_at_first(
+    tmp_path: Path,
+) -> None:
+    """Accepting the quest is shared. An empty square stays quiet."""
+    quiet = TownSession(
+        load_town_config(),
+        tmp_path / "empty",
+        ScriptedNpcModel(),
+    )
+    assert "quiet" in quiet.wait_in_town()
+    greeted = TownSession(
+        load_town_config(),
+        tmp_path / "hello",
+        ScriptedNpcModel(forced_emotion="annoyed", forced_delta=-3),
+    )
+    hello = asyncio.run(greeted.talk("bram", "Hello."))
+    assert hello.affinity_delta == 0
+    assert not (tmp_path / "hello" / "gossip.json").exists()
+
+    session = TownSession(
+        load_town_config(),
+        tmp_path / "town",
+        ScriptedNpcModel(),
+    )
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    gossip = (tmp_path / "town" / "gossip.json").read_text(encoding="utf-8")
+    assert "accepted The Lost Hammer" in gossip
+    assert "gold" not in gossip.lower()
+
+
+def test_a_missed_insult_is_spoken_once_more(tmp_path: Path) -> None:
+    """News that drops the rude quote gets one re-speak, and only one."""
+    quote = "You are a stupid thief"
+    assert not reply_voices_insult(
+        "Bram's been quieter since you spoke to him.",
+        quote,
+    )
+    assert not reply_voices_insult("Bram也听见你夸他手脚麻利呢", quote)
+    assert reply_voices_insult("You called him a stupid thief.", quote)
+    assert reply_voices_insult("那是一句辱骂。", quote)
+    assert reply_voices_insult("Bram听见你说他是个老糊涂，还说他没用。", quote)
+    assert reply_voices_insult("你说他太慢、太蠢，那话很难听。", quote)
+
+    quiet = ScriptedNpcModel()
+    quiet.forced_reply = "The square has been quiet."
+    session = TownSession(load_town_config(), tmp_path, quiet)
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    quiet.calls.clear()
+    asyncio.run(session.talk("mira", "What's new around here?"))
+    speak = [call for call in quiet.calls if call["phase"] == "speak"]
+    acts = [call for call in quiet.calls if call["phase"] == "act"]
+    assert len(acts) == 1
+    assert len(speak) == 2
+
+    voiced = ScriptedNpcModel()
+    other = TownSession(load_town_config(), tmp_path / "voiced", voiced)
+    asyncio.run(other.talk("bram", "You are a stupid thief."))
+    voiced.calls.clear()
+    asyncio.run(other.talk("mira", "What news have you heard about me?"))
+    spoken = [call for call in voiced.calls if call["phase"] == "speak"]
+    assert len(spoken) == 1
+
+
+def test_a_complaint_about_me_keeps_that_meaning(tmp_path: Path) -> None:
+    """'About me' asks if others complained about the player."""
+    assert asks_if_others_complained("Has anyone complained about me?")
+    assert asks_if_others_complained("有人抱怨我吗？")
+    assert not asks_if_others_complained("What's new around here?")
+
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(
+        session.talk("rowan", "Elder Rowan, has anyone complained about me?"),
+    )
+    speak = [call for call in session.model.calls if call["phase"] == "speak"]
+    note = speak[-1]["system"]
+    assert "anyone else complained about you" in note
+    assert "'Me' means you" in note
+    assert "another request" in note
+    assert "Quote or closely paraphrase" not in note
+
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    asyncio.run(session.talk("rowan", "有人抱怨我吗？"))
+    zh = [call for call in session.model.calls if call["phase"] == "speak"]
+    zh_note = zh[-1]["system"]
+    assert "有没有别人抱怨你" in zh_note
+    assert "不要当成新的投诉" in zh_note
+    assert "你侮辱的是Bram" in zh_note

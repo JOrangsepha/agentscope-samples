@@ -55,7 +55,8 @@
 │   └── qwen_langgraph_search_fullstack_runtime/    # 全栈运行时研究应用
 │
 ├── games/
-│   └── game_werewolves/                    # 角色扮演推理游戏
+│   ├── game_werewolves/                    # 角色扮演推理游戏
+│   └── game_npc_dialogue/                  # 带记忆的小镇 NPC 对话
 │
 ├── conversational_agents/
 │   ├── chatbot/                            # 聊天机器人应用
@@ -91,6 +92,7 @@
 | **深度研究**  | deep_research/agent_deep_research                     | ✅             | ❌                     | 多 Agent 研究流程            |
 |           | deep_research/qwen_langgraph_search_fullstack_runtime | ❌             | ✅                     | 全栈运行时深度研究应用             |
 | **游戏**    | games/game_werewolves                                 | ✅             | ❌                     | 多 Agent 角色扮演推理游戏        |
+|           | games/game_npc_dialogue                               | ✅             | ❌                     | 小镇 NPC 对话：记忆、工具与好感度 |
 | **对话应用**  | conversational_agents/chatbot_fullstack_runtime       | ✅             | ✅                     | 带前端/后端的聊天机器人            |
 |           | conversational_agents/chatbot                         | ✅             | ❌                     | 聊天机器人                   |
 |           | conversational_agents/multiagent_conversation         | ✅             | ❌                     | 多 Agent 对话场景            |

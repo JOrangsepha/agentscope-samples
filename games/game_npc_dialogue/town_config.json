@@ -1,0 +1,88 @@
+{
+  "town_name": "Millhaven",
+  "player": {
+    "name": "Traveler",
+    "gold": 12,
+    "inventory": ["worn cloak"]
+  },
+  "quests": {
+    "lost_hammer": {
+      "title": "The Lost Hammer",
+      "description": "Return Bram's forging hammer to finish the quest.",
+      "status": "available",
+      "progress": 0,
+      "goal": 1,
+      "giver": "rowan",
+      "required_item": "forging hammer",
+      "reward_gold": 8,
+      "steps": [
+        {
+          "id": "accept",
+          "status": "available",
+          "hammer": "lost",
+          "npc": "rowan",
+          "marker": "!",
+          "objective": "Bram lost his forging hammer. Talk to Rowan and accept The Lost Hammer."
+        },
+        {
+          "id": "fetch",
+          "status": "accepted",
+          "hammer": "with_mira",
+          "npc": "mira",
+          "marker": "?",
+          "objective": "Ask Mira at the Oak and Lantern for the forging hammer."
+        },
+        {
+          "id": "return",
+          "status": "accepted",
+          "hammer": "carried",
+          "npc": "rowan",
+          "marker": "!",
+          "objective": "Return the forging hammer to Rowan."
+        },
+        {
+          "id": "done",
+          "status": "completed",
+          "hammer": "returned",
+          "npc": "",
+          "marker": "",
+          "objective": "Completed. Reward: 8 gold."
+        }
+      ]
+    }
+  },
+  "npcs": {
+    "bram": {
+      "name": "Bram",
+      "role": "blacksmith",
+      "persona": "Gruff and spare with words. You count every strike of the hammer, trust honest work, and dislike flattery.",
+      "gifts": ["horseshoe", "iron nail"],
+      "can_charge": false,
+      "starting_affinity": 0
+    },
+    "mira": {
+      "name": "Mira",
+      "role": "innkeeper",
+      "persona": "Warm and curious. You keep the Oak and Lantern inn, remember faces, and trade in bread, beds, and harmless gossip. You charge for a bed or a room, not for meals.",
+      "gifts": ["brown loaf"],
+      "services": ["bed", "room"],
+      "quest_gifts": [
+        {
+          "item": "forging hammer",
+          "when_quest": "lost_hammer",
+          "when_status": "accepted"
+        }
+      ],
+      "can_charge": true,
+      "starting_affinity": 5
+    },
+    "rowan": {
+      "name": "Rowan",
+      "role": "elder",
+      "persona": "Formal and patient. You speak for the town council, assign work that helps Millhaven, and expect clear answers. You do not hand out the town seal.",
+      "gifts": [],
+      "can_charge": false,
+      "starting_affinity": 0
+    }
+  }
+}
