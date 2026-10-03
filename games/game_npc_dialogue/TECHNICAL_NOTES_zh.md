@@ -101,7 +101,7 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **39 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **44 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）
@@ -129,6 +129,9 @@ python -m pytest tests -q
   （`test_live_fixes.py`）
 - 侮辱句的句号只在引号内；问候不会生成 `gossip.json`
   （`test_gossip.py`）
+- “Do you remember me?” 把该 NPC 记下的名字、职业和侮辱原句写进说话
+  步骤，并对玩家称 you；打听消息的注入不出现 “the player”
+  （`test_memory.py`、`test_gossip.py`）
 
 另外用同一脚本模型手工跑过 CLI，记录见 `README_zh.md` 的示例访问。
 DashScope `qwen-plus` 的一次实机记录见下一节。OpenAI 与 Ollama 没有跑。
@@ -474,7 +477,7 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.019 秒 / 0.049 秒 |
+| 平均 / 最大延迟 | 0.019 秒 / 0.051 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
@@ -525,6 +528,21 @@ Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自�
 不供热饭，听者自己的传闻改成 “I heard”。这几处还没有再用 DashScope
 跑过。
 
+第十三轮跑的是 `e079299`。记忆没有修好，而且更差：Bram 回答
+“Do you remember me?” 时 0/4 提到侮辱（第十轮是 4/4）。消融实验关掉
+始终改写的 “I heard” 之后，3/3 恢复成
+“Kestrel. The carpenter who called me a stupid thief.”。有一次 Bram 说
+“I remember the name, not the insult.”。另外 Bram 2/3 说 Rowan 做把手，
+Rowan 说旅店供热饭；假锤子被说成交给 Bram；重复领奖被说成
+“You now hold eight gold from that task”。
+
+这次不再靠改提示措辞。始终开启的 “I heard” 改写已经撤掉，只留在打听
+消息或抱怨时的注入里，并且改成对玩家说 “you” / “你”，要求用自己的口气
+说，不要逐条念。玩家问记不记得、上次怎么说、说过什么时，说话步骤写入
+该 NPC 自己存下的名字、职业和侮辱原句。说话步骤另有两行世界事实：谁
+做什么、旅店只租床不供饭、锤子交给 Rowan、已经发过的奖励说
+“the 8-gold reward was already paid”。这几处还没有再用 DashScope 跑过。
+
 ## 传闻
 
 `gossip.py` 在 `talk()` 应用好感之后写 `save/gossip.json`，不增加模型
@@ -532,14 +550,19 @@ Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自�
 以及任务被接受或完成。侮辱是一句 `Bram heard the player say: "…"`，
 句号在引号内。任务是 `Rowan heard the player accepted The Lost Hammer.`
 姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
-“Town rumors” 一节。玩家打听消息、抱怨或 “what's new” 时，说话步骤
-另外写上必须复述的事实：最新一条公开传闻，若另有侮辱则一并带上。
-侮辱句写明玩家侮辱的是听见的那位居民；当前听者不是被骂的人，除非
-听者就是那位居民。“有什么事可以帮你” 和 “有什么我能做的” 不算打听。
-金币和背包的对照只在玩家问到、或本轮工具改了金币或背包时写进说话
-步骤，以免挤掉记忆。旅店中文名是橡树与灯笼旅店。Rowan 不是工匠，
-旅店不供热饭。一位居民自己听见的传闻，提示里改成 “I heard”，
-不要用第三人称再说自己的名字。
+“Town rumors” 一节，原文保留第三人称。玩家打听消息、抱怨或
+“what's new” 时，说话步骤另外写上必须复述的事实：最新一条公开传闻，
+若另有侮辱则一并带上，并把 “the player” 改成 “you”（听者自己听见的
+写成 “I heard you”）。要求用自己的口气说，不要逐条念。侮辱句写明
+侮辱的是听见的那位居民；当前听者不是被骂的人，除非听者就是那位居民。
+“有什么事可以帮你” 和 “有什么我能做的” 不算打听。玩家问
+“remember me”、“how I spoke”、“what did I say”、“还记得我”、
+“我上次怎么说” 或 “我说过什么” 时，说话步骤写入该 NPC 自己记下的
+名字、职业和侮辱原句，对玩家称 “you” / “你”。金币和背包的对照只在
+玩家问到、或本轮工具改了金币或背包时写进说话步骤，以免挤掉记忆。
+旅店中文名是橡树与灯笼旅店。说话步骤另有两行：Bram 打铁，Mira 出租
+床位和房间、不供饭，Rowan 是长老、不雕刻，丢失的锤子交给 Rowan。
+已经发过的奖励要说 8 枚奖励已经付过，不要把这个数字说成金币总数。
 `/wait` 和网页上的 Wait 调用 `narrate_wait`，直接念这句，不另加标签。
 听者就是见证人时回答 “I was there.”，否则回答 “I'll remember that.”。
 这段对白不进入模型。
@@ -558,7 +581,8 @@ Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自�
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
 - 用这一版再跑网页演示或命令行。核对 Bram 被问 “Do you remember me?”
-  时台词里还有侮辱；只问金币时不顺带报背包；中文旅店名是
-  橡树与灯笼旅店；Rowan 不说旅店供热饭，也不被说成做把手的工匠；
-  Rowan 复述自己听见的传闻时说 “I heard”，不说 “Rowan heard”。
+  时说出名字、职业和侮辱原句；打听消息或抱怨时对玩家说 “you” / “你”，
+  并且不是逐条念 “I heard the player…”；Bram 不说 Rowan 做把手；
+  Rowan 不说旅店供热饭；假锤子是交给 Rowan；重复领奖说 8 枚奖励已经
+  付过，不说成金币总数。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

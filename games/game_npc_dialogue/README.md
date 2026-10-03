@@ -178,16 +178,20 @@ player's name, trade, gold, and inventory stay in that NPC's own
 `MEMORY.md` and are not copied into the log.
 
 A question about news, rumors, or whether anyone complained injects the
-latest public fact into the spoken step, and names who was insulted.
-The listener is that person only when they heard the line. `/wait`
-prints a short exchange (Mira or Rowan repeats the latest rumor).
-It does not call the model, so a normal spoken turn stays at two calls.
-The spoken step is given the player's current gold and inventory only
-when the player asked about them or this turn changed them. Other
-turns omit that note. The inn has one name, the Oak and Lantern
-(橡树与灯笼旅店). Rowan is the elder, not a craftsman, and the inn
-does not serve meals. A rumor this resident heard is shown as
-"I heard".
+latest public fact into the spoken step, addressed to the player as
+"you", and names who was insulted. The listener is that person only
+when they heard the line. The standing rumor list stays in the stored
+wording. A question about whether the NPC remembers the player, how
+they spoke, or what they said injects that NPC's stored name, trade,
+and insult. `/wait` prints a short exchange (Mira or Rowan repeats the
+latest rumor). It does not call the model, so a normal spoken turn
+stays at two calls. The spoken step is given the player's current gold
+and inventory only when the player asked about them or this turn
+changed them. Other turns omit that note. The inn has one name, the
+Oak and Lantern (橡树与灯笼旅店). The spoken step also says Bram forges,
+Mira rents beds and rooms, Rowan does not carve, and the lost hammer is
+turned in to Rowan. A repeat reward is "the 8-gold reward was already
+paid."
 
 ### Evaluation
 
