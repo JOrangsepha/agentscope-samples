@@ -8,6 +8,39 @@
 本示例固定依赖 `agentscope==2.0.9`，使用 2.x 的 `Agent` API。
 本仓库里的 `games/game_werewolves` 仍使用 1.x 的 `ReActAgent`，两者互不替代。
 
+## 截图展示
+
+以下画面来自 mock 网页演示（`--provider mock`）。台词由离线脚本模型生成，
+不是 qwen-plus 的实机输出。
+
+![小镇全景](docs/images/01-town-overview.png)
+
+第一天的米尔黑文：金币、背包、失落的锤子，以及 Rowan 头顶的 !。
+
+![与 Mira 对话](docs/images/02-dialogue.png)
+
+Mira 的立绘、爱心和开心的表情气泡，台词逐字打出。
+
+![好感变化](docs/images/03-affinity.png)
+
+说「谢谢你」会提升好感，并浮出 +1 ♥。
+
+![向 Mira 要锤子](docs/images/04-quest-mira.png)
+
+接受任务之后，下一步是向 Mira 索取锻造锤。
+
+![任务完成](docs/images/05-quest-complete.png)
+
+把锤子交还给 Rowan 后任务完成，并得到 8 枚金币。
+
+![镇告示](docs/images/06-sleep-notice.png)
+
+Sleep / Next day 把过夜闲话显示成米尔黑文告示。
+
+![走向 Mira](docs/images/walk-and-talk.gif)
+
+走到 Mira 身边，对话框打开。
+
 ## 🌳 项目结构
 
 ```
@@ -33,6 +66,7 @@
 ├── web_demo.py               # 与命令行共用 TownSession 的浏览器界面
 ├── web/index.html            # 单页，不另装前端依赖
 ├── docs/web_demo.png         # mock 网页演示的截图
+├── docs/images/              # 展示静图和一段走动 GIF
 ├── requirements.txt
 └── tests/                    # 离线 pytest
 ```

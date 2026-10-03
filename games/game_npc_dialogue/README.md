@@ -11,6 +11,39 @@ This sample pins `agentscope==2.0.9`. It uses the 2.x `Agent` API.
 `games/game_werewolves` in this repository still uses the 1.x `ReActAgent`
 API and is a separate example.
 
+## Screenshots
+
+These pictures are the mock web demo (`--provider mock`). The spoken
+lines come from the scripted offline model, not a live qwen-plus run.
+
+![Town overview](docs/images/01-town-overview.png)
+
+Day one in Millhaven: gold, the pack, The Lost Hammer, and a ! over Rowan.
+
+![Dialogue with Mira](docs/images/02-dialogue.png)
+
+Mira's portrait, hearts, and a happy emote sit with the typed reply.
+
+![Affinity change](docs/images/03-affinity.png)
+
+Saying 谢谢你 raises affinity and floats +1 ♥.
+
+![Ask Mira for the hammer](docs/images/04-quest-mira.png)
+
+After the quest is accepted, the next step is to ask Mira for the hammer.
+
+![Quest completed](docs/images/05-quest-complete.png)
+
+Returning the hammer to Rowan completes the quest and pays 8 gold.
+
+![Millhaven notice](docs/images/06-sleep-notice.png)
+
+Sleep / Next day shows the overnight gossip as a Millhaven notice.
+
+![Walking up to Mira](docs/images/walk-and-talk.gif)
+
+Walk up to Mira and the talk box opens.
+
 ## 🌳 Project Structure
 
 ```
@@ -36,6 +69,7 @@ API and is a separate example.
 ├── web_demo.py               # Browser UI on the same TownSession
 ├── web/index.html            # One page, no extra frontend package
 ├── docs/web_demo.png         # Screenshot of the mock web demo
+├── docs/images/              # Showcase stills and a short walk GIF
 ├── requirements.txt
 └── tests/                    # Offline pytest suite
 ```
