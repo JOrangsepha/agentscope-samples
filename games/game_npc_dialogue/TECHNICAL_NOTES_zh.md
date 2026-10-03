@@ -476,7 +476,7 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.018 秒 / 0.043 秒 |
+| 平均 / 最大延迟 | 0.018 秒 / 0.048 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
