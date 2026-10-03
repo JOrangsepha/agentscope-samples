@@ -112,6 +112,7 @@ def build_system_prompt(
     ledger_note: str = "",
     recall_note: str = "",
     rumors: str = "",
+    player_sentiment: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
     shown = npc.gifts if stock is None else stock
@@ -149,6 +150,8 @@ def build_system_prompt(
         "Do not give a resident the player's trade.\n"
         "Give only items listed under stock.\n\n"
     )
+    if player_sentiment:
+        head += "# Player tone\n" f"{player_sentiment}\n\n"
     if speaking:
         return head + _speech_rules(
             player_text,

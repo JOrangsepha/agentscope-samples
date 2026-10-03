@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from npc_config import QuestSpec, TownConfig
+from npc_config import QuestSpec, QuestStep, TownConfig
 
 _AFFINITY_MIN = -100
 _AFFINITY_MAX = 100
+_SENTIMENT_GAIN = 2
+_SENTIMENT_LOSS = 4
 
 
 class GameState:
@@ -328,6 +330,93 @@ class GameState:
             f"reward for {quest['title']}",
         )
         return " " + paid
+
+
+def clip_sentiment(game: GameState, npc_id: str, delta: int) -> int:
+    """Keep small-talk affinity inside today's per-NPC budget.
+
+    Praise can add at most 2 until the next night in town. Harsh
+    lines can subtract at most 4. A zero delta does not write.
+    """
+    game.config.npc(npc_id)
+    amount = int(delta)
+    if amount == 0:
+        return 0
+    book = game.data.setdefault("sentiment", {})
+    row = book.setdefault(npc_id, {"gain": 0, "loss": 0})
+    if amount > 0:
+        room = _SENTIMENT_GAIN - int(row["gain"])
+        applied = max(0, min(amount, room))
+        row["gain"] = int(row["gain"]) + applied
+    else:
+        room = _SENTIMENT_LOSS - int(row["loss"])
+        applied = -max(0, min(-amount, room))
+        row["loss"] = int(row["loss"]) + (-applied)
+    if applied:
+        game.save()
+    return applied
+
+
+def reset_sentiment(game: GameState) -> None:
+    """Clear the small-talk budget. Called when the player sleeps."""
+    if not game.data.get("sentiment"):
+        return
+    game.data["sentiment"] = {}
+    game.save()
+
+
+def quest_guidance(game: GameState, quest_id: str) -> dict:
+    """Current objective, map marker, and completion flag.
+
+    Steps live on the quest in ``town_config.json``. The hammer's
+    place (lost, with Mira, carried, returned) picks the step when
+    several share a status.
+    """
+    quest = game.data["quests"].get(quest_id, {})
+    rule = game.config.quests.get(quest_id)
+    status = str(quest.get("status") or "")
+    place = game.hammer_place() if quest_id == "lost_hammer" else ""
+    step = _matching_step(rule, status, place)
+    objective = ""
+    marker_npc = ""
+    marker = ""
+    if step is not None:
+        objective = step.objective
+        marker_npc = step.npc
+        marker = step.marker
+    elif quest:
+        objective = str(quest.get("description") or "")
+    reward = 0
+    if status == "completed" and rule is not None:
+        reward = int(rule.reward_gold)
+    return {
+        "objective": objective,
+        "marker_npc": marker_npc,
+        "marker": marker,
+        "completed": status == "completed",
+        "reward_gold": reward,
+    }
+
+
+def _matching_step(
+    rule: QuestSpec | None,
+    status: str,
+    place: str,
+) -> QuestStep | None:
+    """Prefer a step whose hammer place matches. Else the first loose one."""
+    if rule is None:
+        return None
+    loose: QuestStep | None = None
+    for step in rule.steps:
+        if step.status != status:
+            continue
+        if not step.hammer:
+            if loose is None:
+                loose = step
+            continue
+        if step.hammer == place:
+            return step
+    return loose
 
 
 def _service_allowed(reason: str, services: list[str]) -> bool:

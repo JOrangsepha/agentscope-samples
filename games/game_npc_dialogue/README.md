@@ -26,6 +26,7 @@ API and is a separate example.
 ├── prompts.py                # Persona and relationship system prompt
 ├── schema.py                 # Per-turn structured output
 ├── speech.py                 # Player name, and cleanup of the spoken line
+├── sentiment.py              # Lexicon sentiment of the player's line
 ├── tools.py                  # Per-NPC give, charge, quest, and memory tools
 ├── session.py                # One visit: act, then speak, then save affinity
 ├── gossip.py                 # Public rumors; private facts stay per NPC
@@ -224,11 +225,13 @@ this turn's own effect. Memory recall matches the spoken reply without
 case: "thief" counts for "stupid thief". "told Bram", "heard you call",
 "you called him", "heard the player say", and "insulted" count for the
 gossip sentence. Persona
-checks that the reply does not use another resident's marker. Affinity
-is positive only after a gift, a successful
-charge, or a quest accept or complete. The session raises a successful
-one of those to at least +1, and clamps any other positive delta to 0.
-Mock token counts stay 0.
+checks that the reply does not use another resident's marker. A gift, a
+successful charge, or a quest accept or complete is at least +1. Other
+model deltas stay at 0, except a small lexicon score of the player's
+own words (`sentiment.py`, -2 to +2). That small-talk score is capped
+at +2 and -4 per resident until the next `/wait`. Greetings, questions,
+item requests, and thanks for a reward do not use it. Mock token counts
+stay 0.
 
 ### Web demo
 
@@ -242,13 +245,20 @@ python web_demo.py --provider mock --port 8765
 Open http://127.0.0.1:8765 . You walk a pixel town as a carpenter.
 WASD or the arrow keys move, and a click on the ground walks there.
 Stand next to Bram, Mira, or Rowan and the hint reads
-**Press E / click to talk**. Clicking that resident opens the same
-wooden dialogue box: a pixel portrait, friendship hearts, and the
-reply typed out underneath. Click the box or press Space to finish
+**Press E / click to talk**. Clicking that resident opens a fresh
+wooden dialogue box: a pixel portrait, friendship hearts inside the
+frame, and the reply typed out underneath. Switching residents, or
+closing and opening again, clears the previous lines. A late reply
+cannot land in the new box. Click the box or press Space to finish
 the line. An emote bubble over the sprite follows the structured
-emotion. Gold, the pack, The Lost Hammer, and the clock sit beside
-the map. **Sleep / Next day** (the button, or the bed by the inn)
+emotion. Kind or rude small talk moves the hearts by a small amount
+and shows `+1 ♥` or `-1 ♥`. Gold, the pack, The Lost Hammer, and the
+clock sit beside the map. The quest panel states the next step, and
+a `!` or `?` floats over the resident who can do it: accept the quest
+with Rowan, ask Mira for the hammer, then return the hammer to Rowan.
+**Sleep / Next day** (the button, or the bed by the inn)
 is the same scripted exchange as `/wait`, shown as a town notice.
+Sleep also refreshes the small-talk affinity budget.
 Movement keys are ignored while the line is focused. An unknown
 `npc_id` returns HTTP 400 and is not sent to the current resident.
 

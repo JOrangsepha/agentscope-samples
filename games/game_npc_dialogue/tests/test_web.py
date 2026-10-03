@@ -140,6 +140,29 @@ def test_unknown_npc_is_a_client_error(tmp_path) -> None:
         server.shutdown()
 
 
+def test_state_names_the_quest_step_and_the_page_guards_dialogue(
+    tmp_path,
+) -> None:
+    """The ledger names the next step, and the page drops a stale reply."""
+    build_session("mock", None, str(tmp_path))
+    server = serve("127.0.0.1", 0)
+    port = server.server_address[1]
+    base = f"http://127.0.0.1:{port}"
+    try:
+        with urlopen(base + "/", timeout=5) as page:
+            html = page.read().decode("utf-8")
+        assert "talkGen" in html
+        assert "gen !== talkGen" in html
+        with urlopen(base + "/api/state", timeout=5) as state_page:
+            state = json.loads(state_page.read())
+        quest = state["quests"][0]
+        assert quest["marker_npc"] == "rowan"
+        assert quest["marker"] == "!"
+        assert "Talk to Rowan" in quest["objective"]
+    finally:
+        server.shutdown()
+
+
 def _texts(session: TownSession) -> list[str]:
     state = session._agent_states["bram"]  # pylint: disable=protected-access
     return [message.get_text_content() or "" for message in state.context]

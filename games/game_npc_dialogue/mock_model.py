@@ -435,6 +435,7 @@ def _choose_reply(
         _quest_reply,
         _gift_reply,
         _warm_greeting_reply,
+        _sentiment_reply,
     )
     for matcher in matchers:
         chosen = matcher(system, user_l, tool_text)
@@ -657,6 +658,25 @@ def _warm_greeting_reply(
             "Affinity is already high, so the greeting is warm.",
         )
     return None
+
+
+def _sentiment_reply(
+    system: str,
+    user_l: str,
+    tool_text: str,
+) -> tuple[str, str, int, str] | None:
+    """Speak to the tone note when no quest or gift line matched."""
+    del user_l, tool_text
+    positive = "Player sentiment: positive" in system
+    negative = "Player sentiment: negative" in system
+    if not positive and not negative:
+        return None
+    chinese = "Reply in Simplified Chinese." in system
+    if negative:
+        reply = "说话客气一点。" if chinese else "Watch your tone."
+        return (reply, "annoyed", 0, "The player spoke harshly.")
+    reply = "你这么说，我很高兴。" if chinese else "That is kind of you to say."
+    return (reply, "grateful", 0, "The player spoke kindly.")
 
 
 def _name_reply(name: str, user_l: str) -> str:

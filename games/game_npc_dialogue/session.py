@@ -22,7 +22,11 @@ from agentscope.permission import PermissionMode
 from agentscope.state import AgentState
 from agentscope.tool import Toolkit
 
-from game_state import GameState
+from game_state import (
+    GameState,
+    clip_sentiment,
+    reset_sentiment,
+)
 from gossip import (
     asks_for_news,
     insult_retry_line,
@@ -41,6 +45,7 @@ from prompts import (
     language_banner,
 )
 from schema import NpcTurn
+from sentiment import conversational_sentiment, tone_note
 from speech import (
     ACT_CUE,
     REFUND_EN,
@@ -255,7 +260,9 @@ class TownSession:
 
     def wait_in_town(self) -> str:
         """Let residents repeat the latest public rumor. No model call."""
-        return narrate_wait(self.save_dir, self.config)
+        text = narrate_wait(self.save_dir, self.config)
+        reset_sentiment(self.game)
+        return text
 
     def _make_agent(
         self,
@@ -344,6 +351,9 @@ class TownSession:
             ledger_note=ledger_note,
             recall_note=remembered,
             rumors=prompt_block(self.save_dir),
+            player_sentiment=tone_note(
+                conversational_sentiment(player_text),
+            ),
         )
 
 
@@ -676,6 +686,15 @@ def _apply_turn(
         delta = 1
     elif not helped and delta > 0:
         delta = 0
+    tone = conversational_sentiment(player_text)
+    social = 0
+    if delta == 0 and not (quest_failed and tone.delta > 0):
+        social = clip_sentiment(game, npc_id, tone.delta)
+        delta = social
+    if social > 0 and emotion == "neutral":
+        emotion = "grateful"
+    elif social < 0 and emotion == "neutral":
+        emotion = "annoyed"
     affinity = game.apply_affinity(npc_id, delta)
     game.set_emotion(npc_id, emotion)
     if abs(delta) >= _NOTABLE_DELTA:

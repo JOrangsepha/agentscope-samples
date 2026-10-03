@@ -74,6 +74,13 @@
     }
     .quest { display: flex; justify-content: space-between; gap: 6px; }
     .quest span { font-size: 12px; }
+    .objective {
+      margin: 4px 0 0;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #3a2416;
+    }
+    .quest[data-status="completed"] .objective { color: #2d5a32; }
     .friend { margin: 4px 0 6px; }
     .fname { display: block; margin-bottom: 2px; }
     .hearts, .mini-hearts { display: flex; flex-wrap: wrap; gap: 1px; }
@@ -124,7 +131,7 @@
       align-items: stretch;
       background: #f3e2b8;
       color: #3a2416;
-      padding: 16px 12px 10px;
+      padding: 12px 12px 10px;
       box-shadow: 0 0 0 4px #6b4428, 0 0 0 8px #2a1a10;
     }
     #dialogue[hidden] { display: none !important; }
@@ -140,9 +147,25 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: -28px;
-      margin-bottom: 4px;
+      margin: 0 0 6px;
       flex-wrap: wrap;
+    }
+    #hearts { margin: 0 0 8px; min-height: 14px; }
+    #delta-pop {
+      position: absolute;
+      z-index: 2;
+      color: #8a2e22;
+      font-size: 16px;
+      font-weight: 700;
+      pointer-events: none;
+      text-shadow: 0 1px 0 #f3e2b8;
+    }
+    #delta-pop[hidden] { display: none !important; }
+    #delta-pop.show { animation: rise 2.6s ease-out forwards; }
+    @keyframes rise {
+      0% { opacity: 1; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-4px); }
+      100% { opacity: 0; transform: translateY(-18px); }
     }
     #nameplate {
       background: #5c3a22;
@@ -235,7 +258,7 @@
       #right-hud { grid-column: 1; grid-row: 2; }
       #stage { grid-column: 1; grid-row: 3; }
       .panel { margin: 0; flex: 1 1 160px; }
-      #dialogue { width: calc(100% - 12px); padding-top: 18px; }
+      #dialogue { width: calc(100% - 12px); padding-top: 12px; }
       #portrait { width: 72px !important; height: 88px !important; }
     }
   </style>
@@ -284,9 +307,10 @@
       <div id="name-row">
         <strong id="nameplate"></strong>
         <span id="roleplate"></span>
-        <div id="hearts" class="hearts"></div>
         <button type="button" id="close-talk">Close</button>
       </div>
+      <div id="hearts" class="hearts"></div>
+      <div id="delta-pop" hidden></div>
       <div id="reply" aria-live="polite"></div>
       <form id="talk-form">
         <input id="line" type="text" autocomplete="off" enterkeyhint="send" />
@@ -378,6 +402,9 @@
     let goal = null;
     let stuck = 0;
     let toastTimer = 0;
+    let talkGen = 0;
+    let hinted = false;
+    let questMarks = {};
     let replyFull = "";
     let replyShown = 0;
     let replyTimer = 0;
@@ -743,7 +770,7 @@
     function heartCount(affinity) {
       const n = Number(affinity) || 0;
       if (n <= 0) return 0;
-      return Math.max(0, Math.min(10, Math.round(n / 10)));
+      return Math.max(0, Math.min(10, Math.round(n)));
     }
 
     function heartCanvas(filled, onDark) {
@@ -851,6 +878,7 @@
     function paintQuests(quests) {
       const box = document.getElementById("quest-body");
       box.replaceChildren();
+      questMarks = {};
       if (!quests.length) {
         box.textContent = "None";
         return;
@@ -862,9 +890,15 @@
         const title = document.createElement("strong");
         title.textContent = quest.title;
         const status = document.createElement("span");
-        status.textContent = quest.status;
+        status.textContent = quest.completed ? "completed" : quest.status;
         row.append(title, status);
-        box.appendChild(row);
+        const objective = document.createElement("p");
+        objective.className = "objective";
+        objective.textContent = quest.objective || quest.description || "";
+        box.append(row, objective);
+        if (quest.marker && quest.marker_npc && !quest.completed) {
+          questMarks[quest.marker_npc] = quest.marker;
+        }
       });
     }
 
@@ -1237,19 +1271,41 @@
       });
       homes.forEach((npc) => {
         const bubbleY = npc.y - 42;
-        if (loading && npc.id === busyId) {
-          drawBubble(ctx, npc.x, bubbleY, "dots");
-          return;
+        const waiting = loading && npc.id === busyId;
+        let emoting = waiting;
+        if (waiting) drawBubble(ctx, npc.x, bubbleY, "dots");
+        else {
+          const person = residentById[npc.id];
+          const kind = person ? EMOTE_FOR[person.emotion] : null;
+          emoting = Boolean(kind) || Boolean(
+            person && person.emotion && !EMOTE_FOR[person.emotion] && person.emotion !== "neutral"
+          );
+          if (kind) drawBubble(ctx, npc.x, bubbleY, kind);
+          else if (emoting) drawBubble(ctx, npc.x, bubbleY, "sweat");
         }
-        const person = residentById[npc.id];
-        const kind = person ? EMOTE_FOR[person.emotion] : null;
-        if (kind) drawBubble(ctx, npc.x, bubbleY, kind);
-        else if (person && person.emotion && !EMOTE_FOR[person.emotion] && person.emotion !== "neutral") {
-          drawBubble(ctx, npc.x, bubbleY, "sweat");
-        }
+        const mark = questMarks[npc.id];
+        if (mark) drawQuestMark(ctx, emoting ? npc.x + 18 : npc.x, bubbleY, mark);
       });
       placeHint();
       paintClock();
+    }
+
+    function drawQuestMark(g, x, y, mark) {
+      const bob = Math.floor(time * 2) % 2 === 0 ? 0 : -1;
+      const left = Math.round(x - 5);
+      const top = Math.round(y + bob);
+      rect(g, left, top, 10, 12, "#2a1c14");
+      rect(g, left + 1, top + 1, 8, 10, "#f6e7b0");
+      g.fillStyle = "#8a2e22";
+      if (mark === "?") {
+        g.fillRect(left + 2, top + 2, 6, 1);
+        g.fillRect(left + 6, top + 3, 2, 2);
+        g.fillRect(left + 3, top + 5, 3, 1);
+        g.fillRect(left + 4, top + 8, 2, 1);
+      } else {
+        g.fillRect(left + 4, top + 2, 2, 5);
+        g.fillRect(left + 4, top + 8, 2, 2);
+      }
     }
 
     function placeHint() {
@@ -1431,8 +1487,31 @@
       };
     }
 
+    function resetDialogueView() {
+      replyFull = "";
+      replyShown = 0;
+      replyTimer = 0;
+      document.getElementById("reply").textContent = "";
+      document.getElementById("line").value = "";
+      const pop = document.getElementById("delta-pop");
+      pop.hidden = true;
+      pop.textContent = "";
+      pop.classList.remove("show");
+    }
+
     function openTalk(id) {
-      if (loading || paperOpen) return;
+      if (paperOpen) return;
+      if (loading && dialogueOpen && current === id) return;
+      const fresh = !dialogueOpen || current !== id;
+      if (fresh) {
+        talkGen += 1;
+        resetDialogueView();
+        if (loading) {
+          loading = false;
+          busyId = null;
+          document.getElementById("say").disabled = false;
+        }
+      }
       picked = true;
       current = id;
       dialogueOpen = true;
@@ -1443,7 +1522,6 @@
       document.getElementById("roleplate").textContent = npc ? npc.role : "";
       showPortrait(id, npc ? npc.emotion : "neutral");
       showHearts(npc ? npc.affinity : 0);
-      if (!replyFull) document.getElementById("reply").textContent = "";
       if (gameState) render(gameState);
       document.getElementById("line").focus();
     }
@@ -1471,38 +1549,62 @@
       return data;
     }
 
+    function showDelta(delta) {
+      const node = document.getElementById("delta-pop");
+      const box = document.getElementById("dialogue");
+      const hearts = document.getElementById("hearts");
+      if (!delta || box.hidden) {
+        node.hidden = true;
+        return;
+      }
+      const hr = hearts.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      node.style.left = Math.round(hr.left - br.left) + "px";
+      node.style.top = Math.round(hr.bottom - br.top + 2) + "px";
+      node.hidden = false;
+      node.textContent = delta > 0 ? ("+" + delta + " ♥") : (String(delta) + " ♥");
+      node.dataset.delta = String(delta);
+      node.classList.remove("show");
+      void node.offsetWidth;
+      node.classList.add("show");
+    }
+
     async function sendLine(text) {
+      const gen = talkGen;
+      const npcId = current;
       loading = true;
-      busyId = current;
+      busyId = npcId;
       document.getElementById("say").disabled = true;
       try {
         const response = await fetch("/api/talk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ npc_id: current, text: text }),
+          body: JSON.stringify({ npc_id: npcId, text: text }),
         });
         const data = await readJson(response);
-        render(data.state);
+        if (data.state) render(data.state);
+        if (gen !== talkGen || npcId !== current || !dialogueOpen) return;
         if (data.turn) {
           document.getElementById("nameplate").textContent = data.turn.npc_name;
           const npc = residentById[current];
           document.getElementById("roleplate").textContent = npc ? npc.role : "";
-          showPortrait(current, data.turn.emotion);
+          showPortrait(npcId, data.turn.emotion);
           showHearts(data.turn.affinity);
-          loading = false;
+          showDelta(data.turn.affinity_delta);
           setReply(data.turn.reply);
-        } else {
-          loading = false;
         }
       } catch (err) {
-        loading = false;
+        if (gen !== talkGen || npcId !== current || !dialogueOpen) return;
         showPortrait("error", "neutral");
         setReply(err.message || "The town could not answer.");
         showToast(err.message || "The town could not answer.");
         document.getElementById("line").value = text;
       } finally {
-        busyId = null;
-        document.getElementById("say").disabled = false;
+        if (gen === talkGen) {
+          loading = false;
+          busyId = null;
+          document.getElementById("say").disabled = false;
+        }
       }
     }
 
@@ -1568,11 +1670,19 @@
         "Say something to " + selectedName + "…";
     }
 
+    function maybeHint(state) {
+      if (hinted) return;
+      hinted = true;
+      const quest = (state.quests || [])[0];
+      if (quest && quest.objective && !quest.completed) showToast(quest.objective);
+    }
+
     async function refresh() {
       const response = await fetch("/api/state");
       const state = await response.json();
       if (!picked) current = state.npc_id;
       render(state);
+      maybeHint(state);
     }
 
     document.getElementById("line").addEventListener("keydown", (event) => {

@@ -14,7 +14,41 @@
       "goal": 1,
       "giver": "rowan",
       "required_item": "forging hammer",
-      "reward_gold": 8
+      "reward_gold": 8,
+      "steps": [
+        {
+          "id": "accept",
+          "status": "available",
+          "hammer": "lost",
+          "npc": "rowan",
+          "marker": "!",
+          "objective": "Bram lost his forging hammer. Talk to Rowan and accept The Lost Hammer."
+        },
+        {
+          "id": "fetch",
+          "status": "accepted",
+          "hammer": "with_mira",
+          "npc": "mira",
+          "marker": "?",
+          "objective": "Ask Mira at the Oak and Lantern for the forging hammer."
+        },
+        {
+          "id": "return",
+          "status": "accepted",
+          "hammer": "carried",
+          "npc": "rowan",
+          "marker": "!",
+          "objective": "Return the forging hammer to Rowan."
+        },
+        {
+          "id": "done",
+          "status": "completed",
+          "hammer": "returned",
+          "npc": "",
+          "marker": "",
+          "objective": "Completed. Reward: 8 gold."
+        }
+      ]
     }
   },
   "npcs": {

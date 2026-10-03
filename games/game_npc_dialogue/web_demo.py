@@ -19,6 +19,7 @@ from pathlib import Path
 
 import agentscope
 
+from game_state import quest_guidance
 from gossip import load_entries
 from model_factory import PROVIDERS, build_chat_model, resolve_provider
 from npc_config import load_town_config
@@ -97,11 +98,18 @@ def state_payload() -> dict:
     config = _SESSION.config
     quests = []
     for quest_id, quest in game.data["quests"].items():
+        guide = quest_guidance(game, quest_id)
         quests.append(
             {
                 "id": quest_id,
                 "title": quest["title"],
                 "status": quest["status"],
+                "description": quest.get("description", ""),
+                "objective": guide["objective"],
+                "marker_npc": guide["marker_npc"],
+                "marker": guide["marker"],
+                "completed": guide["completed"],
+                "reward_gold": guide["reward_gold"],
             },
         )
     residents = []

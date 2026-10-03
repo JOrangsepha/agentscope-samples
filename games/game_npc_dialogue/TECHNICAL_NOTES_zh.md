@@ -92,6 +92,18 @@ flowchart TD
 `Affinity: 2` 以上的问候时，会改说 “It is good to see you again.”，用来证明
 持久化后的分数真的进入了后续提示，而不是只打印出来。
 
+**玩家原话的情感。** `sentiment.py` 用一份中英词典给玩家这句话打分，
+不依赖第三方分词。否定（不 / 没 / not）翻下一处情感词，很 / 非常 / very
+加重。分数收成 -2 到 +2。问候、问句、要物品或收费、以及为奖励道谢仍走
+原来的工具规则，不靠词典加分。其余闲聊在模型增量为 0 时记入好感，并写进
+说话提示（`Player sentiment`），脚本模型会改情绪和台词。每位居民在下一次
+`/wait` 之前，闲聊加分最多 +2、减分最多 -4，避免反复说谢谢刷满。
+
+**任务提示。** `town_config.json` 里 `lost_hammer.steps` 与存档状态、锤子
+所在（丢失、在 Mira 处、在背包、已交还）对齐。`/api/state` 带上
+`objective`、`marker_npc`、`marker`。页面任务栏写下一步；`!` 或 `?`
+画在对应居民头顶。接任务找 Rowan，锤子问 Mira，交还仍是 Rowan，不是 Bram。
+
 ## 测试策略与结果
 
 全部离线，模型是 `ScriptedNpcModel`（实现 `ChatModelBase._call_api`，不访问网络）。
@@ -101,7 +113,8 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **48 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上，本轮改动前为 48 passed；
+加上情感与任务提示后为 **52 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）

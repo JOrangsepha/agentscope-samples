@@ -35,6 +35,18 @@ class NpcSpec:
 
 
 @dataclass
+class QuestStep:
+    """One objective the quest panel and the map marker share."""
+
+    step_id: str
+    status: str
+    objective: str
+    npc: str = ""
+    marker: str = ""
+    hammer: str = ""
+
+
+@dataclass
 class QuestSpec:
     """A quest stored in the town configuration."""
 
@@ -47,6 +59,7 @@ class QuestSpec:
     giver: str = ""
     required_item: str = ""
     reward_gold: int = 0
+    steps: list[QuestStep] = field(default_factory=list)
 
 
 @dataclass
@@ -91,6 +104,7 @@ def load_town_config(path: str | Path | None = None) -> TownConfig:
             giver=str(quest.get("giver", "")),
             required_item=str(quest.get("required_item", "")),
             reward_gold=int(quest.get("reward_gold", 0)),
+            steps=_load_steps(quest.get("steps", [])),
         )
         for quest_id, quest in raw["quests"].items()
     }
@@ -105,6 +119,22 @@ def load_town_config(path: str | Path | None = None) -> TownConfig:
         quests=quests,
         npcs=npcs,
     )
+
+
+def _load_steps(raw_steps: list) -> list[QuestStep]:
+    steps = []
+    for step in raw_steps:
+        steps.append(
+            QuestStep(
+                step_id=str(step.get("id", "")),
+                status=str(step.get("status", "")),
+                objective=str(step.get("objective", "")),
+                npc=str(step.get("npc", "")),
+                marker=str(step.get("marker", "")),
+                hammer=str(step.get("hammer", "")),
+            ),
+        )
+    return steps
 
 
 def _load_npc(npc_id: str, npc: dict) -> NpcSpec:
