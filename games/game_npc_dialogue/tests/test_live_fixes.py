@@ -23,10 +23,12 @@ from speech import (
     HONEST_EN,
     HONEST_ZH,
     SPEAK_CUE,
+    gold_retry_line,
     guard_unproven_transfer,
     learn_player_name,
     normalize_emotion,
     polish_reply,
+    purse_mismatch,
     reply_language,
 )
 
@@ -711,6 +713,33 @@ def test_speak_step_quotes_current_gold_and_inventory(
     assert "金币 9" in zh_gold
     assert "不要主动报背包" in zh_gold
     assert "本轮金币和背包都没有变化" in zh_gold
+
+
+def test_a_wrong_gold_total_is_spoken_once_more(tmp_path: Path) -> None:
+    """A stated purse that is not the saved gold gets one correction."""
+    assert purse_mismatch("You now hold 12 gold.", 9)
+    assert purse_mismatch("Your gold stands at twenty.", 17)
+    assert not purse_mismatch("You now hold 9 gold.", 9)
+    assert not purse_mismatch("You paid 3 gold for a bed.", 9)
+    assert not purse_mismatch("Here you go. That covers the bed.", 9)
+    assert "9" in gold_retry_line("English", 9)
+    assert "9" in gold_retry_line("Simplified Chinese", 9)
+
+    model = ScriptedNpcModel()
+    session = TownSession(load_town_config(), tmp_path, model)
+    asyncio.run(session.talk("mira", "Please charge me 3 gold for a bed."))
+    assert session.game.gold == 9
+    model.forced_reply = "You now hold 12 gold."
+    model.calls.clear()
+    asyncio.run(session.talk("rowan", "How much gold do I have?"))
+    wrong = [call for call in model.calls if call["phase"] == "speak"]
+    assert len(wrong) == 2
+
+    model.forced_reply = "You now hold 9 gold."
+    model.calls.clear()
+    asyncio.run(session.talk("rowan", "How much gold do I have?"))
+    right = [call for call in model.calls if call["phase"] == "speak"]
+    assert len(right) == 1
 
 
 def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:

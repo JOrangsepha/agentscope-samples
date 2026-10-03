@@ -158,19 +158,44 @@ def asks_for_news(text: str) -> bool:
     return any(cue in lowered for cue in _NEWS_CUES)
 
 
+_ABOUT_THE_PLAYER = (
+    "complained about me",
+    "complain about me",
+    "anyone complained",
+    "anyone complain",
+    "有人投诉我",
+    "有人抱怨我",
+    "有人说我",
+)
+
+
+def asks_if_others_complained(text: str) -> bool:
+    """True when the player asks if other people complained about them.
+
+    ``me`` / ``我`` is the player. This is not a new complaint or a request.
+    """
+    lowered = text.lower().replace("’", "'")
+    return any(cue in lowered for cue in _ABOUT_THE_PLAYER)
+
+
 def news_to_repeat(
     save_dir: str | Path,
     language: str,
     listener_name: str = "",
+    player_text: str = "",
 ) -> str:
     """Facts the speak step must say. Empty when nobody asked or none exist.
 
     An insult names its target: the resident who heard the player say it.
     The listener is that target only when they are the same resident.
+    A complaint-about-me question keeps that meaning even with no rumor.
     """
+    intent = ""
+    if asks_if_others_complained(player_text):
+        intent = _about_the_player(language)
     public = _public_entries(save_dir)
     if not public:
-        return ""
+        return intent
     chosen = [
         _to_you(str(public[-1].get("text", "")).strip(), listener_name),
     ]
@@ -186,13 +211,27 @@ def news_to_repeat(
             chosen.append(insult)
     facts = " ".join(line for line in chosen if line)
     if not facts:
-        return ""
+        return intent
     who = _insult_target_sentence(language, listener_name, target)
     tail = f"{who} {facts}".strip()
     quote = ""
     if insults:
         quote = _quote_in(str(insults[-1].get("text", "")))
-    return f"{_news_prefix(language, quote)} {tail}".strip()
+    body = f"{_news_prefix(language, quote)} {tail}".strip()
+    if intent:
+        return f"{intent} {body}".strip()
+    return body
+
+
+def _about_the_player(language: str) -> str:
+    """The question is whether others complained about the player."""
+    if language == "Simplified Chinese":
+        return "你在问有没有别人抱怨你。“我”指的是你。" + "只回答这件事，不要当成新的投诉或其他请求。"
+    return (
+        "You asked whether anyone else complained about you. "
+        + "'Me' means you. Answer only that. "
+        + "Do not treat this as a new complaint or another request."
+    )
 
 
 def _insult_target_sentence(

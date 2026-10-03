@@ -312,6 +312,68 @@ def _english_name(text: str) -> str | None:
     return " ".join(part[:1].upper() + part[1:] for part in chosen)
 
 
+_NUMBER_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
+}
+_PURSE = re.compile(
+    r"(?:hold(?:ing)?|have|has|having|left with|gold is|now at|"
+    r"carrying|carry)\s+(\d+|[a-z]+)\s+gold\b"
+    r"|gold\s+stands\s+at\s+(\d+|[a-z]+)\b"
+    r"|(\d+|[a-z]+)\s+gold\s+(?:left|now|in all|total|remaining|on you)\b"
+    r"|金币\s*(\d+)"
+    r"|(\d+)\s*枚(?:金币)?"
+    r"|(?:还剩|一共|总共)\s*(\d+)",
+    re.IGNORECASE,
+)
+
+
+def purse_mismatch(reply: str, gold: int) -> bool:
+    """True when the reply states a coin total other than ``gold``."""
+    for match in _PURSE.finditer(reply):
+        token = next(group for group in match.groups() if group)
+        stated = _coin_amount(token)
+        if stated is not None and stated != gold:
+            return True
+    return False
+
+
+def gold_retry_line(language: str, gold: int) -> str:
+    """One re-speak when the spoken total is not the saved gold."""
+    if language == "Simplified Chinese":
+        return f"你现在的金币是 {gold}。说这个数字，不要说成别的总数。"
+    return (
+        f"You now have {gold} gold. "
+        "Say that total. Do not give a different count."
+    )
+
+
+def _coin_amount(token: str) -> int | None:
+    if token.isdigit():
+        return int(token)
+    return _NUMBER_WORDS.get(token.lower())
+
+
 def _chinese_name(text: str) -> str | None:
     match = _CN_NAME.search(text)
     if match is None:

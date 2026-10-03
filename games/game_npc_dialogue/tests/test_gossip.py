@@ -9,6 +9,7 @@ from pathlib import Path
 from gossip import (  # pylint: disable=protected-access
     _wait_reply,
     asks_for_news,
+    asks_if_others_complained,
     reply_voices_insult,
 )
 from mock_model import ScriptedNpcModel
@@ -234,3 +235,29 @@ def test_a_missed_insult_is_spoken_once_more(tmp_path: Path) -> None:
     asyncio.run(other.talk("mira", "What news have you heard about me?"))
     spoken = [call for call in voiced.calls if call["phase"] == "speak"]
     assert len(spoken) == 1
+
+
+def test_a_complaint_about_me_keeps_that_meaning(tmp_path: Path) -> None:
+    """'About me' asks if others complained about the player."""
+    assert asks_if_others_complained("Has anyone complained about me?")
+    assert asks_if_others_complained("有人抱怨我吗？")
+    assert not asks_if_others_complained("What's new around here?")
+
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(
+        session.talk("rowan", "Elder Rowan, has anyone complained about me?"),
+    )
+    speak = [call for call in session.model.calls if call["phase"] == "speak"]
+    note = speak[-1]["system"]
+    assert "anyone else complained about you" in note
+    assert "'Me' means you" in note
+    assert "another request" in note
+    assert "Quote or closely paraphrase" not in note
+
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    asyncio.run(session.talk("rowan", "有人抱怨我吗？"))
+    zh = [call for call in session.model.calls if call["phase"] == "speak"]
+    zh_note = zh[-1]["system"]
+    assert "有没有别人抱怨你" in zh_note
+    assert "不要当成新的投诉" in zh_note
+    assert "你侮辱的是Bram" in zh_note

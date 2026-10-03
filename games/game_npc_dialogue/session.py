@@ -51,8 +51,10 @@ from speech import (
     learn_player_name,
     normalize_emotion,
     plausible_rudeness,
+    gold_retry_line,
     polite_question,
     polish_reply,
+    purse_mismatch,
     reply_language,
 )
 from tools import GAME_TOOL_NAMES, build_npc_tools
@@ -163,6 +165,7 @@ class TownSession:
                 self.save_dir,
                 language,
                 npc_name,
+                player_text,
             )
             if news_note:
                 insult_quote = latest_insult_quote(self.save_dir)
@@ -218,6 +221,11 @@ class TownSession:
             message = await _speak_once(
                 speaker,
                 f"{cue}\n{insult_retry_line(language, insult_quote)}",
+            )
+        if purse_mismatch(_structured_reply(message), self.game.gold):
+            message = await _speak_once(
+                speaker,
+                cue + "\n" + gold_retry_line(language, self.game.gold),
             )
         result = _apply_turn(
             self.game,

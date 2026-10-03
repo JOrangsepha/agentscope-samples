@@ -101,7 +101,7 @@ cd games/game_npc_dialogue
 python -m pytest tests -q
 ```
 
-在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **46 passed**。覆盖：
+在 Python 3.12.3、`agentscope==2.0.9` 上结果为 **48 passed**。覆盖：
 
 - 人设加载，以及三份系统提示互不串人设（`test_persona.py`）
 - 记忆文件跨 session 注入（`test_memory.py`）
@@ -555,6 +555,12 @@ Bram 的 “Do you remember me?” 带上了名字和侮辱。新的问题是网
 平均 4.3 秒，最大 9.8 秒。还剩 3 次罕见的世界事实幻觉。中文回复有时
 把英文侮辱原句嵌在句中。这两处是已知限度。中文辱骂词（糊涂、没用、慢、
 蠢、难听）补进复述检查，是在这些数字量完之后。
+
+另外两处少见的误读改成了确定规则。“has anyone complained about me”
+和 “有人抱怨我” 只表示玩家在问有没有别人抱怨自己，即使镇上还没有传闻
+也这么回答，不当成新的投诉或其他请求。台词里如果报了一个和存档不同的
+金币总数，会再问一次，并要求说存档里的数字。这两处没有 DashScope 密钥，
+没有再跑实机。
 
 ## 传闻
 
