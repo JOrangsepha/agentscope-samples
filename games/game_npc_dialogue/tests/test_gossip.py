@@ -213,6 +213,8 @@ def test_a_missed_insult_is_spoken_once_more(tmp_path: Path) -> None:
     assert not reply_voices_insult("Bram也听见你夸他手脚麻利呢", quote)
     assert reply_voices_insult("You called him a stupid thief.", quote)
     assert reply_voices_insult("那是一句辱骂。", quote)
+    assert reply_voices_insult("Bram听见你说他是个老糊涂，还说他没用。", quote)
+    assert reply_voices_insult("你说他太慢、太蠢，那话很难听。", quote)
 
     quiet = ScriptedNpcModel()
     quiet.forced_reply = "The square has been quiet."
