@@ -49,6 +49,9 @@ def test_system_prompt_contains_only_that_persona() -> None:
         assert _MARKERS[npc_id] in prompt
         assert "The inn is the Oak and Lantern." in prompt
         assert "Do not call it by another name." in prompt
+        assert "not a craftsman" in prompt
+        assert "not for meals" in prompt
+        assert "warm meal" in prompt
         assert "Hearthlight" not in prompt
         assert f"You are {config.npcs[npc_id].name}," in prompt
         for other_id, marker in _MARKERS.items():

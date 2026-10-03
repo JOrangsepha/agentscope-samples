@@ -35,7 +35,7 @@ def load_entries(save_dir: str | Path) -> list[dict]:
     return []
 
 
-def prompt_block(save_dir: str | Path) -> str:
+def prompt_block(save_dir: str | Path, listener_name: str = "") -> str:
     """Public rumors for the system prompt. Empty towns say so."""
     public = _public_entries(save_dir)
     if not public:
@@ -43,13 +43,17 @@ def prompt_block(save_dir: str | Path) -> str:
             "None yet. Insults and quest news become public. "
             "A player's name, trade, gold, and inventory stay private."
         )
-    lines = [str(entry.get("text", "")) for entry in public[-6:]]
+    lines = [
+        _heard_by_listener(str(entry.get("text", "")), listener_name)
+        for entry in public[-6:]
+    ]
     joined = "\n".join(f"- {line}" for line in lines if line)
     return (
         f"{joined}\n"
-        "Each line names who heard it. An insult was said by the "
-        "player, not by that resident. Do not invent a rumor or "
-        "repeat private memory."
+        "Each line names who heard it. A line that starts with "
+        "'I heard' is yours; do not name yourself instead. "
+        "An insult was said by the player, not by that resident. "
+        "Do not invent a rumor or repeat private memory."
     )
 
 
@@ -170,11 +174,19 @@ def news_to_repeat(
     public = _public_entries(save_dir)
     if not public:
         return ""
-    chosen = [str(public[-1].get("text", "")).strip()]
+    chosen = [
+        _heard_by_listener(
+            str(public[-1].get("text", "")).strip(),
+            listener_name,
+        ),
+    ]
     insults = [entry for entry in public if entry.get("kind") == "insult"]
     target = ""
     if insults:
-        insult = str(insults[-1].get("text", "")).strip()
+        insult = _heard_by_listener(
+            str(insults[-1].get("text", "")).strip(),
+            listener_name,
+        )
         target = str(insults[-1].get("source_name", "")).strip()
         if insult and insult not in chosen:
             chosen.append(insult)
@@ -233,6 +245,15 @@ def _insult_target_sentence(
             "The listener is not the target unless they are that person."
         )
     return sentence
+
+
+def _heard_by_listener(text: str, listener_name: str) -> str:
+    """Use 'I heard' when this resident is the one who heard it."""
+    listener = listener_name.strip()
+    prefix = f"{listener} heard"
+    if listener and text.startswith(prefix):
+        return "I heard" + text[len(prefix) :]
+    return text
 
 
 def _public_entries(save_dir: str | Path) -> list[dict]:

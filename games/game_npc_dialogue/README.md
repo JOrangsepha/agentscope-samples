@@ -182,10 +182,12 @@ latest public fact into the spoken step, and names who was insulted.
 The listener is that person only when they heard the line. `/wait`
 prints a short exchange (Mira or Rowan repeats the latest rumor).
 It does not call the model, so a normal spoken turn stays at two calls.
-The spoken step is also given the player's current gold and inventory
-as a reference. It may mention a figure only when the player asked
-about it or this turn changed it, and it does not list the pack
-unprompted. The inn has one name, the Oak and Lantern.
+The spoken step is given the player's current gold and inventory only
+when the player asked about them or this turn changed them. Other
+turns omit that note. The inn has one name, the Oak and Lantern
+(橡树与灯笼旅店). Rowan is the elder, not a craftsman, and the inn
+does not serve meals. A rumor this resident heard is shown as
+"I heard".
 
 ### Evaluation
 

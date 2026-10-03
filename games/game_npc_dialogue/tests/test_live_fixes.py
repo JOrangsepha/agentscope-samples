@@ -671,19 +671,41 @@ def test_speak_step_quotes_current_gold_and_inventory(
     assert session.game.gold == 9
     later = [call for call in model.calls if call["phase"] == "speak"]
     quiet = later[-1]["system"]
-    assert "gold 9" in quiet
-    assert "changed neither gold nor inventory" in quiet
-    assert "Never list the inventory unprompted" in quiet
-    assert "twenty" not in quiet.lower()
+    assert "Reference only" not in quiet
+    assert "Never list the inventory unprompted" not in quiet
+    assert "Gold: 9" in quiet
+    asked = asyncio.run(
+        session.talk("rowan", "How much gold do I have?"),
+    )
+    assert asked.affinity_delta == 0
+    asked_note = [call for call in model.calls if call["phase"] == "speak"][
+        -1
+    ]["system"]
+    assert "Reference only" in asked_note
+    assert "gold 9" in asked_note
+    assert "changed neither gold nor inventory" in asked_note
+    remembered = asyncio.run(
+        session.talk("bram", "Do you remember me?"),
+    )
+    assert remembered.affinity_delta == 0
+    memory_note = [call for call in model.calls if call["phase"] == "speak"][
+        -1
+    ]["system"]
+    assert "Reference only" not in memory_note
+    assert "inventory worn cloak" not in memory_note
     asyncio.run(session.talk("mira", "你好米拉"))
     zh = [call for call in model.calls if call["phase"] == "speak"]
     zh_note = zh[-1]["system"]
-    assert "仅供对照" in zh_note
-    assert "金币 9" in zh_note
-    assert "背包 worn cloak" in zh_note
-    assert "不要主动报背包" in zh_note
-    assert "不要另编" in zh_note
-    assert "本轮金币和背包都没有变化" in zh_note
+    assert "仅供对照" not in zh_note
+    assert "橡树与灯笼旅店" in zh_note
+    asyncio.run(session.talk("mira", "我现在有多少金币？"))
+    zh_gold = [call for call in model.calls if call["phase"] == "speak"][-1][
+        "system"
+    ]
+    assert "仅供对照" in zh_gold
+    assert "金币 9" in zh_gold
+    assert "不要主动报背包" in zh_gold
+    assert "本轮金币和背包都没有变化" in zh_gold
 
 
 def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:

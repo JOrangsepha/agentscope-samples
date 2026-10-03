@@ -139,6 +139,9 @@ def build_system_prompt(
         f"{hammer_fact(hammer_status, hammer_place, npc.npc_id)}\n"
         "Bram is the blacksmith, Mira the innkeeper of the "
         "Oak and Lantern, Rowan the elder. "
+        "Rowan is not a craftsman and does not carve handles. "
+        "The Oak and Lantern charges for a bed or a room, not for meals. "
+        "Do not say the inn serves a warm meal. "
         "The inn is the Oak and Lantern. Do not call it by another name. "
         "Do not give a resident the player's trade.\n"
         "Give only items listed under stock.\n\n"
@@ -195,6 +198,7 @@ def language_banner(language: str, *, items: bool = True) -> str:
         return (
             "Reply in Simplified Chinese. 只用简体中文。 "
             "Keep the player's name exactly as written. 姓名不要音译。"
+            " Inn: Oak and Lantern=橡树与灯笼旅店."
             f"{names}"
         )
     if language == "English":

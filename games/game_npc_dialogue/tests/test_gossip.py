@@ -73,6 +73,18 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     assert "exchange" in again
 
 
+def test_the_hearer_says_i_heard(tmp_path: Path) -> None:
+    """Rowan does not retell his own rumor in the third person."""
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(session.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(session.talk("rowan", "What's new around here?"))
+    speak = [call for call in session.model.calls if call["phase"] == "speak"]
+    note = speak[-1]["system"]
+    assert "I heard the player accepted The Lost Hammer" in note
+    assert "Rowan heard the player" not in note
+    assert "do not name yourself" in note
+
+
 def test_an_offer_of_help_is_not_a_news_question() -> None:
     """Asking to help is not a request for town gossip."""
     assert not asks_for_news("米拉，我有什么事可以帮你吗？")

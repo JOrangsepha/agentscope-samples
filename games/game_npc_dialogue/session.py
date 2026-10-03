@@ -148,13 +148,17 @@ class TownSession:
                 language,
                 npc_name,
             )
-        ledger_note = _ledger_note(
-            self.game.gold,
-            list(self.game.inventory),
-            language,
-            gold_changed=self.game.gold != before_gold,
-            items_changed=list(self.game.inventory) != list(before_items),
-        )
+        gold_changed = self.game.gold != before_gold
+        items_changed = list(self.game.inventory) != list(before_items)
+        ledger_note = ""
+        if gold_changed or items_changed or _asks_about_ledger(player_text):
+            ledger_note = _ledger_note(
+                self.game.gold,
+                list(self.game.inventory),
+                language,
+                gold_changed=gold_changed,
+                items_changed=items_changed,
+            )
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
@@ -294,7 +298,7 @@ class TownSession:
             granted_note=granted_note,
             news_note=news_note,
             ledger_note=ledger_note,
-            rumors=prompt_block(self.save_dir),
+            rumors=prompt_block(self.save_dir, npc.name),
         )
 
 
@@ -389,6 +393,30 @@ def _handed_names_zh(items: list[str]) -> str:
         else:
             shown.append(_ITEM_ZH.get(item, item))
     return "、".join(shown)
+
+
+_LEDGER_CUES = (
+    "gold",
+    "coin",
+    "inventory",
+    "my pack",
+    "in my pack",
+    "what do i have",
+    "what am i carrying",
+    "what i'm carrying",
+    "金币",
+    "多少钱",
+    "背包",
+    "身上有",
+    "带着什么",
+    "有什么东西",
+)
+
+
+def _asks_about_ledger(text: str) -> bool:
+    """True when this line asks about coins or what the player carries."""
+    lowered = text.lower().replace("’", "'")
+    return any(cue in lowered for cue in _LEDGER_CUES)
 
 
 def _ledger_note(
