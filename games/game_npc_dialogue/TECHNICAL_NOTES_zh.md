@@ -474,7 +474,7 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.020 秒 / 0.060 秒 |
+| 平均 / 最大延迟 | 0.021 秒 / 0.053 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
@@ -483,7 +483,7 @@ CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
 平均延迟约 4.1 秒。所附带裁判的报告是状态 100%、记忆 100%、语言
 100%、人设 100%、好感 92%、2.15 次/轮、输入 33265、输出 1516、平均
 4.375 秒、最大 5.103 秒、裁判 9/13 至少 3 分；`repeat_reward` 的好感
-为 False。下面三处是这次要改的，还没有再用 DashScope 跑过。
+为 False。这三处已经在 `ce8fda5`。
 
 1. 传闻改成一句：`Bram heard the player say: "…"`。任务也是
    `Rowan heard the player accepted The Lost Hammer.` 玩家打听消息时，
@@ -493,6 +493,21 @@ CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
    受粗鲁用词限制。好感合理性因此量的是这条规则，不是模型自报的符号。
 3. 交出锻造锤时，说话提示写明这是 Bram 丢失的锻造锤。
 
+第十轮网页演示跑的是 `ce8fda5`（qwen-plus）：`npc_id=nobody` 返回 400；
+17 次有效 POST 都是 200，空回复 0，平均 4.1 秒，最大 4.9 秒，事件循环
+关闭次数 0。`/wait` 没有 “Heard by”。Mira 对 “any news” 复述了侮辱并点名
+Bram 听见。道谢的好感是 +0。Mira 交出的是 Bram 的锻造锤。还剩两处：
+Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自己；
+“Thank you for the reward” 说金币是 20，当时存档是 17。
+“What's new around here?” 没有带上侮辱。下面两处是这次要改的，
+还没有再用 DashScope 跑过。
+
+1. “complain”、“complained”、“投诉”、“抱怨”、“有人说我”，以及
+   “what's new”、“heard anything”、“any rumors”、“新闻”、“有什么事”
+   也走打听消息的注入。注入句写明玩家侮辱的是见证人；当前听者不是
+   被骂的人，除非听者就是那位见证人。
+2. 说话步骤写上当前金币和背包，并要求提到这些数字时只能用这一份。
+
 ## 传闻
 
 `gossip.py` 在 `talk()` 应用好感之后写 `save/gossip.json`，不增加模型
@@ -500,8 +515,11 @@ CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
 以及任务被接受或完成。侮辱是一句 `Bram heard the player say: "…"`，
 句号在引号内。任务是 `Rowan heard the player accepted The Lost Hammer.`
 姓名、职业、金币、背包留在各自的 `MEMORY.md`。系统提示始终有
-“Town rumors” 一节。玩家打听消息时，说话步骤另外写上必须复述的事实：
-最新一条公开传闻，若另有侮辱则一并带上，并写明话是玩家说的。
+“Town rumors” 一节。玩家打听消息、抱怨或 “what's new” 时，说话步骤
+另外写上必须复述的事实：最新一条公开传闻，若另有侮辱则一并带上。
+侮辱句写明玩家侮辱的是听见的那位居民；当前听者不是被骂的人，除非
+听者就是那位居民。说话步骤同时写上当前金币和背包，提到这些数字时
+只能用这一份。
 `/wait` 和网页上的 Wait 调用 `narrate_wait`，直接念这句，不另加标签。
 听者就是见证人时回答 “I was there.”，否则回答 “I'll remember that.”。
 这段对白不进入模型。
@@ -519,8 +537,8 @@ CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
 
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
-- 用这一版再跑 `python eval_harness.py --provider dashscope`，以及加上
-  `--judge`。核对打听消息时台词带上侮辱，并写明是玩家说的、谁听见的；
-  `/wait` 不再出现 “Heard by”；“Thank you for the reward” 和 Rowan
-  闲聊的好感是 0；Mira 交出锤子时说这是 Bram 丢失的锻造锤。
+- 用这一版再跑网页演示或 `python eval_harness.py --provider dashscope`。
+  核对 “has anyone complained about me?” 把侮辱算在 Bram 身上，而不是
+  Rowan；“What's new” 和 “新闻” 会带上侮辱；提到金币时用的是当前金币
+  （付过 3 枚住宿费之后是 17，不是 20）。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

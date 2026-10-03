@@ -37,8 +37,20 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     system = speak[-1]["system"]
     assert "Bram heard the player say" in system
     assert "asks for news" in system
+    assert "The player insulted Bram" in system
+    assert "You are Mira" in system
+    assert "You were not insulted" in system
     assert asks_for_news("What news have you heard about me?")
     assert asks_for_news("镇上最近有什么新鲜事？")
+    assert asks_for_news("What's new around here?")
+    assert asks_for_news("Have you heard anything?")
+    assert asks_for_news("Are there any rumors?")
+    assert asks_for_news("镇上有什么新闻吗？")
+    assert asks_for_news("镇上有什么事？")
+    assert asks_for_news("Has anyone complained about me?")
+    assert asks_for_news("有人投诉我吗？")
+    assert asks_for_news("有人抱怨我吗？")
+    assert asks_for_news("有人说我什么了？")
     assert not asks_for_news(
         "Good news, I already found the forging hammer.",
     )
@@ -57,6 +69,61 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     assert _wait_reply("Bram", about_bram) == "Bram: I was there."
     again = (tmp_path / "gossip.json").read_text(encoding="utf-8")
     assert "exchange" in again
+
+
+def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:
+    """Rowan is not the target of an insult Bram heard."""
+    session = TownSession(load_town_config(), tmp_path, ScriptedNpcModel())
+    asyncio.run(session.talk("bram", "You are a stupid thief."))
+    rowan = asyncio.run(
+        session.talk("rowan", "Elder Rowan, has anyone complained about me?"),
+    )
+    assert rowan.affinity_delta == 0
+    rowan_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    note = rowan_speak[-1]["system"]
+    assert "The player insulted Bram" in note
+    assert "You are Rowan" in note
+    assert "You were not insulted" in note
+    assert "Do not say the insult was about you" in note
+    assert "stupid thief" in note
+
+    bram = asyncio.run(
+        session.talk("bram", "Has anyone complained about me?"),
+    )
+    assert bram.affinity_delta == 0
+    bram_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    heard = bram_speak[-1]["system"]
+    assert "The player insulted you, Bram" in heard
+    assert "you heard it" in heard
+    assert "You were not insulted" not in heard
+
+    fresh = TownSession(
+        load_town_config(),
+        tmp_path / "quest-only",
+        ScriptedNpcModel(),
+    )
+    asyncio.run(fresh.talk("rowan", "I accept the lost hammer quest."))
+    asyncio.run(fresh.talk("mira", "What's new around here?"))
+    mira_speak = [
+        call for call in fresh.model.calls if call["phase"] == "speak"
+    ]
+    quest_note = mira_speak[-1]["system"]
+    assert "asks for news" in quest_note
+    assert "accepted The Lost Hammer" in quest_note
+    assert "insulted" not in quest_note
+
+    asyncio.run(session.talk("rowan", "有人抱怨我吗？"))
+    zh_speak = [
+        call for call in session.model.calls if call["phase"] == "speak"
+    ]
+    zh_note = zh_speak[-1]["system"]
+    assert "玩家侮辱的是Bram" in zh_note
+    assert "你是Rowan，不是被骂的人" in zh_note
+    assert "不要说这句是在骂你" in zh_note
 
 
 def test_quest_news_is_public_and_wait_is_quiet_at_first(

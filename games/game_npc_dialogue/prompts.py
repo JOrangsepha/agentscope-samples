@@ -107,6 +107,7 @@ def build_system_prompt(
     paid_note: str = "",
     granted_note: str = "",
     news_note: str = "",
+    ledger_note: str = "",
     rumors: str = "",
 ) -> str:
     """Build the persona prompt, including live game state and affinity."""
@@ -147,6 +148,7 @@ def build_system_prompt(
             paid_note,
             granted_note,
             news_note,
+            ledger_note,
         )
     tools = _tool_lines(npc, gives_quests)
     return (
@@ -206,10 +208,12 @@ def _speech_rules(
     paid_note: str,
     granted_note: str = "",
     news_note: str = "",
+    ledger_note: str = "",
 ) -> str:
     spoken = player_text.strip() or "(empty)"
     paid = f"{paid_note}\n" if paid_note else ""
     granted = f"{granted_note}\n" if granted_note else ""
+    ledger = f"{ledger_note}\n" if ledger_note else ""
     news = f"{news_note}\n" if news_note else ""
     return (
         "# This turn\n"
@@ -217,6 +221,7 @@ def _speech_rules(
         f"The player said: {spoken}\n"
         f"{paid}"
         f"{granted}"
+        f"{ledger}"
         f"{news}"
         "Speak in one or two sentences. No asterisks or stage directions.\n"
         "Emotion: neutral, happy, annoyed, grateful, warm, suspicious. "

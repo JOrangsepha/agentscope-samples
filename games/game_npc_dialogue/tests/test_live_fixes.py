@@ -643,6 +643,38 @@ def test_a_successful_help_is_at_least_plus_one(tmp_path: Path) -> None:
     assert chat.affinity_delta == 0
 
 
+def test_speak_step_quotes_current_gold_and_inventory(
+    tmp_path: Path,
+) -> None:
+    """The spoken line is given the gold left after a charge."""
+    model = ScriptedNpcModel()
+    session = TownSession(load_town_config(), tmp_path, model)
+    bed = asyncio.run(
+        session.talk("mira", "Please charge me 3 gold for a bed."),
+    )
+    assert session.game.gold == 9
+    assert bed.affinity_delta >= 1
+    speak = [call for call in model.calls if call["phase"] == "speak"]
+    act = [call for call in model.calls if call["phase"] == "act"]
+    assert "The player's gold is 9" in speak[-1]["system"]
+    assert "Inventory: worn cloak" in speak[-1]["system"]
+    assert "Do not invent a different number" in speak[-1]["system"]
+    assert "Do not invent a different number" not in act[-1]["system"]
+    thanked = asyncio.run(
+        session.talk("rowan", "Thank you for the reward."),
+    )
+    assert thanked.affinity_delta == 0
+    assert session.game.gold == 9
+    later = [call for call in model.calls if call["phase"] == "speak"]
+    assert "The player's gold is 9" in later[-1]["system"]
+    assert "twenty" not in later[-1]["system"].lower()
+    asyncio.run(session.talk("mira", "你好米拉"))
+    zh = [call for call in model.calls if call["phase"] == "speak"]
+    assert "玩家金币是 9" in zh[-1]["system"]
+    assert "背包：worn cloak" in zh[-1]["system"]
+    assert "不要另编" in zh[-1]["system"]
+
+
 def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:
     """A large negative delta on 'hi' is dropped and is not gossip."""
     model = ScriptedNpcModel(forced_emotion="annoyed", forced_delta=-3)

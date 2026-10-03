@@ -143,7 +143,16 @@ class TownSession:
         granted = _new_items(before_items, self.game.inventory)
         news_note = ""
         if asks_for_news(player_text):
-            news_note = news_to_repeat(self.save_dir, language)
+            news_note = news_to_repeat(
+                self.save_dir,
+                language,
+                npc_name,
+            )
+        ledger_note = _ledger_note(
+            self.game.gold,
+            list(self.game.inventory),
+            language,
+        )
         speaker = self._make_agent(
             npc_id,
             with_tools=False,
@@ -152,12 +161,11 @@ class TownSession:
             paid_note=_paid_note(paid),
             granted_note=_granted_note(granted, language),
             news_note=news_note,
+            ledger_note=ledger_note,
         )
+        cue = _speak_cue(player_text, language, news_note, ledger_note)
         message = await speaker.reply(
-            UserMsg(
-                name="director",
-                content=_speak_cue(player_text, language, news_note),
-            ),
+            UserMsg(name="director", content=cue),
             structured_schema=NpcTurn,
         )
         if _needs_chinese_retry(language, message):
@@ -165,7 +173,7 @@ class TownSession:
                 UserMsg(
                     name="director",
                     content=(
-                        f"{_speak_cue(player_text, language, news_note)}\n"
+                        f"{cue}\n"
                         "The previous reply was not Simplified Chinese. "
                         "Reply in Simplified Chinese only."
                     ),
@@ -212,6 +220,7 @@ class TownSession:
         paid_note: str = "",
         granted_note: str = "",
         news_note: str = "",
+        ledger_note: str = "",
     ) -> Agent:
         state = self._agent_states.setdefault(npc_id, AgentState())
         state.permission_context.mode = PermissionMode.BYPASS
@@ -242,6 +251,7 @@ class TownSession:
                 paid_note=paid_note,
                 granted_note=granted_note,
                 news_note=news_note,
+                ledger_note=ledger_note,
             ),
             model=self.model,
             toolkit=toolkit,
@@ -261,6 +271,7 @@ class TownSession:
         paid_note: str = "",
         granted_note: str = "",
         news_note: str = "",
+        ledger_note: str = "",
     ) -> str:
         npc = self.config.npc(npc_id)
         return build_system_prompt(
@@ -280,6 +291,7 @@ class TownSession:
             paid_note=paid_note,
             granted_note=granted_note,
             news_note=news_note,
+            ledger_note=ledger_note,
             rumors=prompt_block(self.save_dir),
         )
 
@@ -377,6 +389,18 @@ def _handed_names_zh(items: list[str]) -> str:
     return "、".join(shown)
 
 
+def _ledger_note(gold: int, inventory: list[str], language: str) -> str:
+    """Authoritative coins and pack for this spoken line."""
+    items = ", ".join(inventory) or "(empty)"
+    if language == "Simplified Chinese":
+        return f"玩家金币是 {gold}。背包：{items}。" "提到金币或身上的东西时，只能用这里的数字，不要另编。"
+    return (
+        f"The player's gold is {gold}. Inventory: {items}. "
+        "If you mention gold or what the player carries, "
+        "use only these figures. Do not invent a different number."
+    )
+
+
 def _paid_note(paid: tuple[int, str] | None) -> str:
     if paid is None:
         return ""
@@ -422,14 +446,23 @@ def _structured_reply(message) -> str:
     return message.get_text_content() or ""
 
 
-def _speak_cue(player_text: str, language: str, news_note: str = "") -> str:
+def _speak_cue(
+    player_text: str,
+    language: str,
+    news_note: str = "",
+    ledger_note: str = "",
+) -> str:
     """Turn-local instruction. It is removed from history after the reply."""
-    news = f"\n{news_note}" if news_note else ""
+    extra = ""
+    if ledger_note:
+        extra += f"\n{ledger_note}"
+    if news_note:
+        extra += f"\n{news_note}"
     return (
         f"{SPEAK_CUE}\n"
         f"{language_banner(language, items=False)}\n"
         f"The player said: {player_text}"
-        f"{news}"
+        f"{extra}"
     )
 
 

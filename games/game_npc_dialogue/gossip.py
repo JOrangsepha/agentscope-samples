@@ -130,42 +130,107 @@ _NEWS_CUES = (
     "what news",
     "any news",
     "latest news",
+    "what's new",
+    "heard anything",
+    "any rumors",
     "heard about me",
     "what do people",
+    "complain",
+    "complained",
     "新鲜事",
     "什么消息",
     "传闻",
     "闲话",
+    "新闻",
+    "有什么事",
+    "投诉",
+    "抱怨",
+    "有人说我",
 )
 
 
 def asks_for_news(text: str) -> bool:
     """True when this player line is asking what the town is saying."""
-    lowered = text.lower()
+    lowered = text.lower().replace("’", "'")
     return any(cue in lowered for cue in _NEWS_CUES)
 
 
-def news_to_repeat(save_dir: str | Path, language: str) -> str:
-    """Facts the speak step must say. Empty when nobody asked or none exist."""
+def news_to_repeat(
+    save_dir: str | Path,
+    language: str,
+    listener_name: str = "",
+) -> str:
+    """Facts the speak step must say. Empty when nobody asked or none exist.
+
+    An insult names its target: the resident who heard the player say it.
+    The listener is that target only when they are the same resident.
+    """
     public = _public_entries(save_dir)
     if not public:
         return ""
     chosen = [str(public[-1].get("text", "")).strip()]
     insults = [entry for entry in public if entry.get("kind") == "insult"]
+    target = ""
     if insults:
         insult = str(insults[-1].get("text", "")).strip()
+        target = str(insults[-1].get("source_name", "")).strip()
         if insult and insult not in chosen:
             chosen.append(insult)
     facts = " ".join(line for line in chosen if line)
     if not facts:
         return ""
+    who = _insult_target_sentence(language, listener_name, target)
+    tail = f"{who} {facts}".strip()
     if language == "Simplified Chinese":
-        return "玩家在打听消息。必须复述这些公开事实，并点名听见的人。" "侮辱是玩家说的，不是见证人说的：" f"{facts}"
+        prefix = "玩家在打听消息。必须复述这些公开事实，并点名听见的人。"
+        return f"{prefix}{tail}"
     return (
         "The player asks for news. Repeat these public facts and "
-        "name who heard them. Any insult was said by the player, "
-        f"not by the witness: {facts}"
+        f"name who heard them. {tail}"
     )
+
+
+def _insult_target_sentence(
+    language: str,
+    listener_name: str,
+    target_name: str,
+) -> str:
+    """Say who was insulted. Empty when this rumor is not an insult."""
+    if not target_name:
+        return ""
+    listener = listener_name.strip()
+    same = bool(listener) and listener == target_name
+    if language == "Simplified Chinese":
+        if same:
+            sentence = f"玩家侮辱的是你（{target_name}），你听见了。" "不要说成别人被骂。"
+        elif listener:
+            sentence = (
+                f"玩家侮辱的是{target_name}，{target_name}听见了。"
+                f"你是{listener}，不是被骂的人。不要说这句是在骂你。"
+            )
+        else:
+            sentence = (
+                f"玩家侮辱的是{target_name}，{target_name}听见了。"
+                f"听的人不是被骂的人，除非听的人就是{target_name}。"
+            )
+        return sentence
+    if same:
+        sentence = (
+            f"The player insulted you, {target_name}; you heard it. "
+            "Do not name someone else as the target."
+        )
+    elif listener:
+        sentence = (
+            f"The player insulted {target_name}; {target_name} heard it. "
+            f"You are {listener}. You were not insulted. "
+            "Do not say the insult was about you."
+        )
+    else:
+        sentence = (
+            f"The player insulted {target_name}; {target_name} heard it. "
+            "The listener is not the target unless they are that person."
+        )
+    return sentence
 
 
 def _public_entries(save_dir: str | Path) -> list[dict]:

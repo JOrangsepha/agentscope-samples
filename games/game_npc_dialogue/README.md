@@ -177,8 +177,13 @@ appear in the next resident's system prompt under "Town rumors". The
 player's name, trade, gold, and inventory stay in that NPC's own
 `MEMORY.md` and are not copied into the log.
 
-`/wait` prints a short exchange (Mira or Rowan repeats the latest rumor).
+A question about news, rumors, or whether anyone complained injects the
+latest public fact into the spoken step, and names who was insulted.
+The listener is that person only when they heard the line. `/wait`
+prints a short exchange (Mira or Rowan repeats the latest rumor).
 It does not call the model, so a normal spoken turn stays at two calls.
+The spoken step is also told the player's current gold and inventory,
+and must not invent a different figure.
 
 ### Evaluation
 
