@@ -31,7 +31,7 @@ from speech import reply_language
 
 _MARKERS = {
     "bram": "count every strike of the hammer",
-    "mira": "Oak and Lantern",
+    "mira": "harmless gossip",
     "rowan": "town council",
 }
 

@@ -656,23 +656,34 @@ def test_speak_step_quotes_current_gold_and_inventory(
     assert bed.affinity_delta >= 1
     speak = [call for call in model.calls if call["phase"] == "speak"]
     act = [call for call in model.calls if call["phase"] == "act"]
-    assert "The player's gold is 9" in speak[-1]["system"]
-    assert "Inventory: worn cloak" in speak[-1]["system"]
-    assert "Do not invent a different number" in speak[-1]["system"]
-    assert "Do not invent a different number" not in act[-1]["system"]
+    charged_note = speak[-1]["system"]
+    assert "Reference only" in charged_note
+    assert "gold 9" in charged_note
+    assert "inventory worn cloak" in charged_note
+    assert "This turn changed gold." in charged_note
+    assert "Never list the inventory unprompted" in charged_note
+    assert "Do not invent a different number" in charged_note
+    assert "Never list the inventory unprompted" not in act[-1]["system"]
     thanked = asyncio.run(
         session.talk("rowan", "Thank you for the reward."),
     )
     assert thanked.affinity_delta == 0
     assert session.game.gold == 9
     later = [call for call in model.calls if call["phase"] == "speak"]
-    assert "The player's gold is 9" in later[-1]["system"]
-    assert "twenty" not in later[-1]["system"].lower()
+    quiet = later[-1]["system"]
+    assert "gold 9" in quiet
+    assert "changed neither gold nor inventory" in quiet
+    assert "Never list the inventory unprompted" in quiet
+    assert "twenty" not in quiet.lower()
     asyncio.run(session.talk("mira", "你好米拉"))
     zh = [call for call in model.calls if call["phase"] == "speak"]
-    assert "玩家金币是 9" in zh[-1]["system"]
-    assert "背包：worn cloak" in zh[-1]["system"]
-    assert "不要另编" in zh[-1]["system"]
+    zh_note = zh[-1]["system"]
+    assert "仅供对照" in zh_note
+    assert "金币 9" in zh_note
+    assert "背包 worn cloak" in zh_note
+    assert "不要主动报背包" in zh_note
+    assert "不要另编" in zh_note
+    assert "本轮金币和背包都没有变化" in zh_note
 
 
 def test_a_greeting_is_not_recorded_as_an_insult(tmp_path: Path) -> None:
@@ -785,6 +796,14 @@ def test_plain_text_scores_are_parsed(tmp_path: Path) -> None:
     assert stacked_parsed["affinity_delta"] == -1
     assert "False claim" in stacked_parsed["affinity_reason"]
     assert _parse_structured_call("Hello there.") is None
+    comma = "锻造锤就在你手里呢，Kestrel。快去还给长老吧！\n" + "warm, 0, 没有变化"
+    comma_parsed = _parse_structured_call(comma)
+    assert comma_parsed is not None
+    assert comma_parsed["reply"].startswith("锻造锤")
+    assert "warm" not in comma_parsed["reply"]
+    assert comma_parsed["emotion"] == "warm"
+    assert comma_parsed["affinity_delta"] == 0
+    assert comma_parsed["affinity_reason"] == "没有变化"
 
     class PlainSpeak(ScriptedNpcModel):
         """The first speak step writes reply, emotion, delta, and reason."""

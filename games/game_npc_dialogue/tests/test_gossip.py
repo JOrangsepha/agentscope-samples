@@ -47,6 +47,8 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     assert asks_for_news("Are there any rumors?")
     assert asks_for_news("镇上有什么新闻吗？")
     assert asks_for_news("镇上有什么事？")
+    assert asks_for_news("最近有什么事？")
+    assert asks_for_news("有什么新鲜事？")
     assert asks_for_news("Has anyone complained about me?")
     assert asks_for_news("有人投诉我吗？")
     assert asks_for_news("有人抱怨我吗？")
@@ -69,6 +71,16 @@ def test_an_insult_spreads_and_a_name_stays_private(tmp_path: Path) -> None:
     assert _wait_reply("Bram", about_bram) == "Bram: I was there."
     again = (tmp_path / "gossip.json").read_text(encoding="utf-8")
     assert "exchange" in again
+
+
+def test_an_offer_of_help_is_not_a_news_question() -> None:
+    """Asking to help is not a request for town gossip."""
+    assert not asks_for_news("米拉，我有什么事可以帮你吗？")
+    assert not asks_for_news("有什么事可以帮你")
+    assert not asks_for_news("有什么我能做的")
+    assert asks_for_news("镇上有什么事？")
+    assert asks_for_news("最近有什么事？")
+    assert asks_for_news("有什么新鲜事？")
 
 
 def test_a_complaint_names_who_was_insulted(tmp_path: Path) -> None:

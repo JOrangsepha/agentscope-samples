@@ -451,7 +451,7 @@ you call him a stupid thief”，四次评测的 `gossip_heard` 都因此失败�
 | 状态正确率 | 只看这一轮自己的效果：金币增减、本轮获得或失去的物品、本轮设定或保持不变的任务状态、玩家姓名。前面一轮没完成，不会因为金币总数对不上而判后面的轮次失败 |
 | 记忆召回率 | 台词里要出现记住的事实，不区分大小写。“thief” 算作 “stupid thief”。“told Bram”、“heard you call”、“you called him”、“heard the player say”、“bram heard”、“insulted” 都算作传闻原句。只出现在系统提示里不算 |
 | 语言一致率 | `reply_language(reply)` 与玩家原句的语言相同 |
-| 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 Oak and Lantern、Rowan 的 town council）。这不是文风打分。`--judge` 另按 1–5 打分，能看到回合结束后的游戏状态，看不到工具轨迹，所以一句和最终状态碰巧相符的台词仍可能得高分。3 分及以上算过。mock 跳过，且这次调用不计入每轮调用 |
+| 人设一致率 | 台词不得包含另一名 NPC 的专有标记（Bram 的锤击、Mira 的 harmless gossip、Rowan 的 town council）。旅店名 Oak and Lantern 是共用事实，不算 Mira 的专有标记。这不是文风打分。`--judge` 另按 1–5 打分，能看到回合结束后的游戏状态，看不到工具轨迹，所以一句和最终状态碰巧相符的台词仍可能得高分。3 分及以上算过。mock 跳过，且这次调用不计入每轮调用 |
 | 好感合理性 | 量的是代码是否执行了规则，不是模型自己填的符号。成功赠送、收费、接受或完成才保留正分；没有这类成功工具结果时，正的 delta 被压成 0。辱骂仍要玩家原句里有粗鲁用词 |
 | 调用 / token / 延迟 | 包装 `ChatModel._call_api`，按轮汇总对话调用。裁判调用不计入 |
 
@@ -474,7 +474,7 @@ python eval_harness.py --provider mock --out eval_reports
 | 好感合理性 | 100% |
 | 每轮调用 | 2.00 |
 | 输入 / 输出 token | 0 / 0（脚本模型不报告用量） |
-| 平均 / 最大延迟 | 0.021 秒 / 0.053 秒 |
+| 平均 / 最大延迟 | 0.021 秒 / 0.048 秒 |
 
 `pytest` 里的 `test_eval.py` 断言同一组比率为 1.0 且每轮 2 次调用，因此
 CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
@@ -499,14 +499,22 @@ CI 不需要单独跑上面的命令。`eval_reports/` 已加入 `.gitignore`。
 Bram 听见。道谢的好感是 +0。Mira 交出的是 Bram 的锻造锤。还剩两处：
 Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自己；
 “Thank you for the reward” 说金币是 20，当时存档是 17。
-“What's new around here?” 没有带上侮辱。下面两处是这次要改的，
-还没有再用 DashScope 跑过。
+“What's new around here?” 没有带上侮辱。这三处已经在 `76ac015`。
 
-1. “complain”、“complained”、“投诉”、“抱怨”、“有人说我”，以及
-   “what's new”、“heard anything”、“any rumors”、“新闻”、“有什么事”
-   也走打听消息的注入。注入句写明玩家侮辱的是见证人；当前听者不是
-   被骂的人，除非听者就是那位见证人。
-2. 说话步骤写上当前金币和背包，并要求提到这些数字时只能用这一份。
+第十一轮跑的是 `76ac015`。投诉、What's new、新闻，以及付过住宿费之后
+的金币，这几项目标检查都过了。网页演示：`npc_id=nobody` 返回 400；
+17 次有效 POST 都是 200，空回复 0，平均 4.0 秒，最大 4.8 秒。副作用
+有三处，这次要改，还没有再用 DashScope 跑过。
+
+1. “有什么事” 太宽。“米拉，我有什么事可以帮你吗？” 在命令行和网页都
+   注入了传闻。改成 “镇上有什么事”、“最近有什么事”、“有什么新鲜事”。
+   “有什么事可以帮你” 和 “有什么我能做的” 不算打听消息。
+2. 对照用的金币和背包被说了出来。只问金币时也报了背包（命令行说了
+   17 枚并列出旧斗篷、铁钉、黑面包和马掌；网页说了 14 枚并列出旧斗篷
+   和马掌）。现在写明：只有玩家问到，或本轮有变化，才提；不要主动报背包。
+3. 纯文本 `warm, 0, 没有变化` 多了一次说话调用。逗号分隔的
+   `warm, 0, reason` 也要能解析。旅店名统一为 Oak and Lantern；
+   命令行里 Rowan 说过 Hearthlight Inn。
 
 ## 传闻
 
@@ -518,8 +526,10 @@ Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自�
 “Town rumors” 一节。玩家打听消息、抱怨或 “what's new” 时，说话步骤
 另外写上必须复述的事实：最新一条公开传闻，若另有侮辱则一并带上。
 侮辱句写明玩家侮辱的是听见的那位居民；当前听者不是被骂的人，除非
-听者就是那位居民。说话步骤同时写上当前金币和背包，提到这些数字时
-只能用这一份。
+听者就是那位居民。“有什么事可以帮你” 和 “有什么我能做的” 不算打听。
+说话步骤把当前金币和背包当作对照：只有玩家问到，或本轮有变化时才提，
+不要主动报背包。旅店只有一个名字，Oak and Lantern，写在每位居民的
+事实里，不要再叫成别的名字。
 `/wait` 和网页上的 Wait 调用 `narrate_wait`，直接念这句，不另加标签。
 听者就是见证人时回答 “I was there.”，否则回答 “I'll remember that.”。
 这段对白不进入模型。
@@ -537,8 +547,7 @@ Rowan 被问 “has anyone complained about me?” 时把侮辱说成是骂自�
 
 - 接 `agentscope.middleware.TTSMiddleware` 或 DashScope CosyVoice，把 `reply` 读出来。2.0.9 已有 TTS 模型类，本示例没有声音输出。
 - 打开 `retrieval_async`，用真实模型从多份 `fact_N.md` 里挑选相关记忆。
-- 用这一版再跑网页演示或 `python eval_harness.py --provider dashscope`。
-  核对 “has anyone complained about me?” 把侮辱算在 Bram 身上，而不是
-  Rowan；“What's new” 和 “新闻” 会带上侮辱；提到金币时用的是当前金币
-  （付过 3 枚住宿费之后是 17，不是 20）。
+- 用这一版再跑网页演示或命令行。核对 “我有什么事可以帮你” 不再复述
+  侮辱；“你好” 不主动报金币和背包；只问金币时不顺带报背包；
+  `warm, 0, reason` 不再多一次说话调用；旅店只叫 Oak and Lantern。
 - 为真实模型补一小段人工对话记录，核对它是否在该调用工具时调用、并让好感度变化合理。

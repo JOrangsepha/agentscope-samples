@@ -137,7 +137,9 @@ def build_system_prompt(
         f"{_rumor_text(rumors)}\n\n"
         "# Facts\n"
         f"{hammer_fact(hammer_status, hammer_place, npc.npc_id)}\n"
-        "Bram is the blacksmith, Mira the innkeeper, Rowan the elder. "
+        "Bram is the blacksmith, Mira the innkeeper of the "
+        "Oak and Lantern, Rowan the elder. "
+        "The inn is the Oak and Lantern. Do not call it by another name. "
         "Do not give a resident the player's trade.\n"
         "Give only items listed under stock.\n\n"
     )

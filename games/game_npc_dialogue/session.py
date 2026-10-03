@@ -152,6 +152,8 @@ class TownSession:
             self.game.gold,
             list(self.game.inventory),
             language,
+            gold_changed=self.game.gold != before_gold,
+            items_changed=list(self.game.inventory) != list(before_items),
         )
         speaker = self._make_agent(
             npc_id,
@@ -389,16 +391,64 @@ def _handed_names_zh(items: list[str]) -> str:
     return "、".join(shown)
 
 
-def _ledger_note(gold: int, inventory: list[str], language: str) -> str:
-    """Authoritative coins and pack for this spoken line."""
+def _ledger_note(
+    gold: int,
+    inventory: list[str],
+    language: str,
+    *,
+    gold_changed: bool,
+    items_changed: bool,
+) -> str:
+    """Coins and pack as a reference, not a line to recite."""
     items = ", ".join(inventory) or "(empty)"
+    changed = _ledger_change(language, gold_changed, items_changed)
     if language == "Simplified Chinese":
-        return f"玩家金币是 {gold}。背包：{items}。" "提到金币或身上的东西时，只能用这里的数字，不要另编。"
+        return (
+            f"仅供对照，不要主动念出来：金币 {gold}；背包 {items}。{changed}"
+            "只有玩家问到金币，或本轮金币有变化时，才提金币。"
+            "只有玩家问到某件物品，或本轮背包有变化时，才提那件物品。"
+            "不要主动报背包。不要另编数字。"
+        )
     return (
-        f"The player's gold is {gold}. Inventory: {items}. "
-        "If you mention gold or what the player carries, "
-        "use only these figures. Do not invent a different number."
+        f"Reference only, do not recite it: gold {gold}; "
+        f"inventory {items}. {changed}"
+        "Mention gold only if the player asked about gold or this "
+        "turn changed it. Mention an item only if the player asked "
+        "about that item or this turn changed the inventory. "
+        "Never list the inventory unprompted. "
+        "Do not invent a different number."
     )
+
+
+def _ledger_change(
+    language: str,
+    gold_changed: bool,
+    items_changed: bool,
+) -> str:
+    """Say whether this turn already moved coins or the pack."""
+    if language == "Simplified Chinese":
+        return _ledger_change_zh(gold_changed, items_changed)
+    return _ledger_change_en(gold_changed, items_changed)
+
+
+def _ledger_change_zh(gold_changed: bool, items_changed: bool) -> str:
+    if gold_changed and items_changed:
+        return "本轮金币和背包都有变化。"
+    if gold_changed:
+        return "本轮金币有变化。"
+    if items_changed:
+        return "本轮背包有变化。"
+    return "本轮金币和背包都没有变化。"
+
+
+def _ledger_change_en(gold_changed: bool, items_changed: bool) -> str:
+    if gold_changed and items_changed:
+        return "This turn changed gold and the inventory. "
+    if gold_changed:
+        return "This turn changed gold. "
+    if items_changed:
+        return "This turn changed the inventory. "
+    return "This turn changed neither gold nor inventory. "
 
 
 def _paid_note(paid: tuple[int, str] | None) -> str:
@@ -681,9 +731,9 @@ def _parse_structured_kwargs(body: str) -> dict | None:
 _EMOTION_WORD = "neutral|happy|annoyed|grateful|warm|suspicious"
 _PLAIN_EMOTION = re.compile(_EMOTION_WORD, re.IGNORECASE)
 _PLAIN_DELTA = re.compile(
-    r"[\s:：]*"
+    r"[\s,，:：]*"
     r"(?:affinity[\s_]*delta|affinity[\s_]*change|delta)?"
-    r"[\s:：]*\(?"
+    r"[\s,，:：]*\(?"
     r"(-?\d+)",
     re.IGNORECASE,
 )
@@ -711,6 +761,7 @@ def _parse_plain_structured(text: str) -> dict | None:
             continue
         reason = tail[match.end() + number.end() :].strip()
         reason = reason.strip("\"'").strip("()").strip()
+        reason = reason.lstrip(",，:：").strip()
         return _normalize_structured(
             {
                 "reply": reply,

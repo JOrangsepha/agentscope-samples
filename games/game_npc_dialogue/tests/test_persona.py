@@ -11,7 +11,7 @@ from prompts import build_system_prompt
 
 _MARKERS = {
     "bram": "count every strike of the hammer",
-    "mira": "Oak and Lantern",
+    "mira": "harmless gossip",
     "rowan": "town council",
 }
 
@@ -25,6 +25,8 @@ def test_three_distinct_personas() -> None:
     assert config.npcs["bram"].role == "blacksmith"
     assert config.npcs["mira"].role == "innkeeper"
     assert config.npcs["rowan"].role == "elder"
+    assert "Oak and Lantern" in config.npcs["mira"].persona
+    assert "Hearthlight" not in config.npcs["mira"].persona
     assert "horseshoe" in config.npcs["bram"].gifts
     assert config.npcs["rowan"].gifts == []
     assert config.quests["lost_hammer"].title == "The Lost Hammer"
@@ -45,6 +47,9 @@ def test_system_prompt_contains_only_that_persona() -> None:
     }
     for npc_id, prompt in prompts.items():
         assert _MARKERS[npc_id] in prompt
+        assert "The inn is the Oak and Lantern." in prompt
+        assert "Do not call it by another name." in prompt
+        assert "Hearthlight" not in prompt
         assert f"You are {config.npcs[npc_id].name}," in prompt
         for other_id, marker in _MARKERS.items():
             if other_id != npc_id:
